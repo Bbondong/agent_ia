@@ -1082,15 +1082,19 @@ def init_application():
             print("🚀 Démarrage automatique du système...")
             demarrer_systeme_automatique()
 
-if __name__ == '__main__':
+def create_app():
+    """Factory pour créer l'application Flask"""
     # Initialiser l'application
     init_application()
-    
-    # Démarrer le serveur Flask
+    return app
+
+# Pour l'exécution locale
+if __name__ == '__main__':
+    app = create_app()
     app.run(
         host='0.0.0.0',
         port=PORT,
         debug=DEBUG,
         threaded=True,
-        use_reloader=False  # Important pour éviter les doubles threads
+        use_reloader=False
     )
