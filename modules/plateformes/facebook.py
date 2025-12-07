@@ -1,8 +1,9 @@
-# platforme/facebook.py - CORRIGÉ
+# modules/plateformes/facebook.py - VERSION AMÉLIORÉE
 import os
 import time
 import requests
-import sys
+import json
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 from modules.ia import generer_reponse_commentaire
 from config import FACEBOOK_PAGE_ID, FACEBOOK_ACCESS_TOKEN
@@ -10,9 +11,11 @@ from config import FACEBOOK_PAGE_ID, FACEBOOK_ACCESS_TOKEN
 API_URL = "https://graph.facebook.com/v19.0"
 
 # -----------------------------
-# Configuration de debugging
+# Configuration
 # -----------------------------
-DEBUG = True  # Mettez à False en production
+DEBUG = True
+MAX_DAYS_OLD = 30  # Traiter les posts jusqu'à 30 jours
+COMMENT_DAYS_LIMIT = 7  # Répondre aux commentaires jusqu'à 7 jours
 
 def debug_log(message: str):
     """Journalisation de debugging"""
@@ -21,7 +24,7 @@ def debug_log(message: str):
         print(f"[FACEBOOK DEBUG {timestamp}] {message}")
 
 # -----------------------------
-# Helpers avec retry, timeout et meilleure gestion d'erreurs
+# Helpers avec retry et gestion d'erreurs améliorée
 # -----------------------------
 def request_post(url: str, data: Optional[Dict] = None, files: Optional[Dict] = None, 
                  retries: int = 3, delay: int = 5, timeout: int = 30) -> Optional[Dict]:
@@ -29,27 +32,20 @@ def request_post(url: str, data: Optional[Dict] = None, files: Optional[Dict] = 
     for attempt in range(1, retries + 1):
         try:
             debug_log(f"POST attempt {attempt}/{retries} to {url}")
-            debug_log(f"Data keys: {list(data.keys()) if data else 'None'}")
             
-            resp = requests.post(url, data=data, files=files, timeout=timeout)
+            headers = {'Content-Type': 'application/json'}
+            json_data = json.dumps(data) if data else None
+            
+            resp = requests.post(url, data=json_data, files=files, 
+                                 headers=headers, timeout=timeout)
             debug_log(f"Response status: {resp.status_code}")
             
             resp.raise_for_status()
             result = resp.json()
-            debug_log(f"Response keys: {list(result.keys()) if isinstance(result, dict) else 'Not dict'}")
             return result
             
         except requests.exceptions.Timeout as e:
             debug_log(f"Timeout error: {e}")
-            print(f"[POST TIMEOUT] {e} | tentative {attempt}/{retries}")
-            if attempt < retries:
-                time.sleep(delay)
-            else:
-                return None
-                
-        except requests.exceptions.ConnectionError as e:
-            debug_log(f"Connection error: {e}")
-            print(f"[POST CONNECTION ERROR] {e} | tentative {attempt}/{retries}")
             if attempt < retries:
                 time.sleep(delay)
             else:
@@ -57,15 +53,6 @@ def request_post(url: str, data: Optional[Dict] = None, files: Optional[Dict] = 
                 
         except requests.exceptions.HTTPError as e:
             debug_log(f"HTTP error: {e}")
-            print(f"[POST HTTP ERROR {resp.status_code}] {e} | tentative {attempt}/{retries}")
-            
-            # Essayez de lire le message d'erreur Facebook
-            try:
-                error_data = resp.json()
-                print(f"Facebook error: {error_data}")
-            except:
-                pass
-                
             if attempt < retries:
                 time.sleep(delay)
             else:
@@ -73,7 +60,6 @@ def request_post(url: str, data: Optional[Dict] = None, files: Optional[Dict] = 
                 
         except Exception as e:
             debug_log(f"Other error: {e}")
-            print(f"[POST ERROR] {e} | tentative {attempt}/{retries}")
             if attempt < retries:
                 time.sleep(delay)
             else:
@@ -93,17 +79,8 @@ def request_get(url: str, params: Optional[Dict] = None,
             resp.raise_for_status()
             return resp.json()
             
-        except requests.exceptions.Timeout as e:
-            debug_log(f"Timeout error: {e}")
-            print(f"[GET TIMEOUT] {e} | tentative {attempt}/{retries}")
-            if attempt < retries:
-                time.sleep(delay)
-            else:
-                return None
-                
         except Exception as e:
             debug_log(f"Error: {e}")
-            print(f"[GET ERROR] {e} | tentative {attempt}/{retries}")
             if attempt < retries:
                 time.sleep(delay)
             else:
@@ -112,7 +89,285 @@ def request_get(url: str, params: Optional[Dict] = None,
     return None
 
 # -----------------------------
-# Test de connexion Facebook
+# Gestion des anciens posts et commentaires
+# -----------------------------
+def obtenir_posts_recents(days_back: int = MAX_DAYS_OLD) -> List[Dict]:
+    """Récupère les posts récents de la page Facebook"""
+    try:
+        debug_log(f"Fetching posts from last {days_back} days...")
+        
+        # Calculer la date limite
+        since_date = (datetime.now() - timedelta(days=days_back)).timestamp()
+        
+        url = f"{API_URL}/{FACEBOOK_PAGE_ID}/posts"
+        params = {
+            "access_token": FACEBOOK_ACCESS_TOKEN,
+            "fields": "id,message,created_time,permalink_url",
+            "since": str(int(since_date)),
+            "limit": 100
+        }
+        
+        data = request_get(url, params=params)
+        
+        if not data or 'data' not in data:
+            debug_log("No posts data received")
+            return []
+        
+        posts = []
+        for post in data['data']:
+            posts.append({
+                'id': post.get('id'),
+                'message': post.get('message', ''),
+                'created_time': post.get('created_time'),
+                'permalink_url': post.get('permalink_url', ''),
+                'age_days': (datetime.now() - datetime.strptime(
+                    post.get('created_time'), '%Y-%m-%dT%H:%M:%S%z'
+                )).days if post.get('created_time') else 0
+            })
+        
+        debug_log(f"Found {len(posts)} recent posts")
+        return posts
+        
+    except Exception as e:
+        debug_log(f"Error fetching posts: {e}")
+        return []
+
+def obtenir_commentaires_non_repondus(post_id: str, hours_limit: int = 24) -> List[Dict]:
+    """Récupère les commentaires non répondus d'un post"""
+    try:
+        debug_log(f"Fetching un-replied comments for post: {post_id}")
+        
+        # Récupérer tous les commentaires
+        url = f"{API_URL}/{post_id}/comments"
+        params = {
+            "access_token": FACEBOOK_ACCESS_TOKEN,
+            "fields": "id,message,created_time,from,comment_count",
+            "filter": "stream",  # Tous les commentaires
+            "limit": 100
+        }
+        
+        data = request_get(url, params=params)
+        
+        if not data or 'data' not in data:
+            return []
+        
+        un_replied_comments = []
+        
+        for comment in data['data']:
+            comment_id = comment.get('id')
+            
+            # Vérifier si le commentaire a des réponses
+            has_replies = comment.get('comment_count', 0) > 0
+            
+            # Vérifier l'âge du commentaire
+            created_time = comment.get('created_time')
+            if created_time:
+                comment_date = datetime.strptime(created_time, '%Y-%m-%dT%H:%M:%S%z')
+                age_hours = (datetime.now(comment_date.tzinfo) - comment_date).total_seconds() / 3600
+                
+                # Ne traiter que les commentaires récents (dans la limite d'heures)
+                if age_hours <= hours_limit and not has_replies:
+                    un_replied_comments.append({
+                        'comment_id': comment_id,
+                        'post_id': post_id,
+                        'message': comment.get('message', ''),
+                        'created_time': created_time,
+                        'user': comment.get('from', {}).get('name', 'Inconnu'),
+                        'user_id': comment.get('from', {}).get('id', ''),
+                        'age_hours': age_hours
+                    })
+        
+        debug_log(f"Found {len(un_replied_comments)} un-replied comments for post {post_id}")
+        return un_replied_comments
+        
+    except Exception as e:
+        debug_log(f"Error fetching comments: {e}")
+        return []
+
+def repondre_au_commentaire(comment_id: str, message: str) -> bool:
+    """Répond à un commentaire spécifique"""
+    try:
+        debug_log(f"Replying to comment {comment_id}")
+        
+        url = f"{API_URL}/{comment_id}/comments"
+        data = {
+            "message": message,
+            "access_token": FACEBOOK_ACCESS_TOKEN
+        }
+        
+        response = request_post(url, data=data)
+        
+        if response and 'id' in response:
+            debug_log(f"Reply successful: {response['id']}")
+            return True
+        else:
+            debug_log(f"Reply failed: {response}")
+            return False
+            
+    except Exception as e:
+        debug_log(f"Error replying to comment: {e}")
+        return False
+
+# -----------------------------
+# NOUVEAU : Traitement des anciens posts
+# -----------------------------
+def traiter_anciens_posts_et_commentaires() -> Dict[str, Any]:
+    """
+    Traite les anciens posts et répond aux commentaires non traités
+    Retourne les statistiques de traitement
+    """
+    debug_log("Starting processing of old posts and comments...")
+    
+    stats = {
+        'posts_checked': 0,
+        'comments_found': 0,
+        'comments_replied': 0,
+        'errors': 0,
+        'posts': []
+    }
+    
+    try:
+        # 1. Récupérer les posts récents
+        posts = obtenir_posts_recents(days_back=MAX_DAYS_OLD)
+        stats['posts_checked'] = len(posts)
+        
+        for post in posts:
+            post_id = post.get('id')
+            post_stats = {
+                'post_id': post_id,
+                'age_days': post.get('age_days', 0),
+                'comments_checked': 0,
+                'comments_replied': 0
+            }
+            
+            # 2. Récupérer les commentaires non répondus
+            un_replied_comments = obtenir_commentaires_non_repondus(
+                post_id, 
+                hours_limit=COMMENT_DAYS_LIMIT * 24
+            )
+            
+            post_stats['comments_checked'] = len(un_replied_comments)
+            stats['comments_found'] += len(un_replied_comments)
+            
+            # 3. Traiter chaque commentaire non répondu
+            for comment in un_replied_comments:
+                try:
+                    # Générer une réponse IA
+                    reponse_ia = generer_reponse_commentaire(comment['message'])
+                    
+                    # Répondre au commentaire
+                    if repondre_au_commentaire(comment['comment_id'], reponse_ia):
+                        post_stats['comments_replied'] += 1
+                        stats['comments_replied'] += 1
+                        
+                        # Log de la réponse
+                        debug_log(f"Replied to comment from {comment['user']} on post {post_id}")
+                        
+                        # Attendre un peu entre les réponses pour éviter le spam
+                        time.sleep(2)
+                        
+                except Exception as e:
+                    stats['errors'] += 1
+                    debug_log(f"Error processing comment {comment['comment_id']}: {e}")
+            
+            stats['posts'].append(post_stats)
+        
+        debug_log(f"Processing completed: {stats}")
+        return {
+            'status': 'success',
+            'message': f'Traitement terminé: {stats["comments_replied"]}/{stats["comments_found"]} commentaires répondu(s)',
+            'stats': stats,
+            'timestamp': datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        error_msg = f"Error in traiter_anciens_posts_et_commentaires: {e}"
+        debug_log(error_msg)
+        return {
+            'status': 'error',
+            'message': error_msg,
+            'stats': stats
+        }
+
+# -----------------------------
+# NOUVEAU : Service automatique de traitement
+# -----------------------------
+class FacebookCommentService:
+    """Service pour gérer automatiquement les commentaires Facebook"""
+    
+    def __init__(self):
+        self.last_processed = None
+        self.running = False
+        self.processing_thread = None
+        
+    def demarrer_service(self):
+        """Démarre le service de traitement automatique"""
+        if self.running:
+            return {"status": "already_running"}
+        
+        self.running = True
+        
+        # Lancer un traitement immédiat
+        import threading
+        self.processing_thread = threading.Thread(target=self._processing_loop, daemon=True)
+        self.processing_thread.start()
+        
+        return {
+            "status": "started",
+            "message": "Service de traitement des commentaires démarré",
+            "check_interval_hours": 6
+        }
+    
+    def arreter_service(self):
+        """Arrête le service"""
+        self.running = False
+        return {"status": "stopped", "message": "Service arrêté"}
+    
+    def _processing_loop(self):
+        """Boucle de traitement automatique"""
+        import time
+        
+        while self.running:
+            try:
+                debug_log("Starting automatic comment processing...")
+                
+                # Traiter les anciens posts et commentaires
+                result = traiter_anciens_posts_et_commentaires()
+                
+                self.last_processed = datetime.now()
+                
+                debug_log(f"Processing completed: {result.get('message', 'No message')}")
+                
+                # Attendre 6 heures avant le prochain traitement
+                for _ in range(6 * 60):  # 6 heures = 360 minutes
+                    if not self.running:
+                        break
+                    time.sleep(60)  # Vérifier toutes les minutes
+                    
+            except Exception as e:
+                debug_log(f"Error in processing loop: {e}")
+                time.sleep(300)  # Attendre 5 minutes en cas d'erreur
+    
+    def get_status(self):
+        """Retourne le statut du service"""
+        return {
+            "running": self.running,
+            "last_processed": self.last_processed.isoformat() if self.last_processed else None,
+            "next_check_in": self._calculate_next_check() if self.last_processed else None
+        }
+    
+    def _calculate_next_check(self):
+        """Calcule le prochain traitement"""
+        if self.last_processed:
+            next_check = self.last_processed + timedelta(hours=6)
+            return next_check.isoformat()
+        return None
+
+# Instance globale du service
+comment_service = FacebookCommentService()
+
+# -----------------------------
+# Fonctions existantes (gardées pour compatibilité)
 # -----------------------------
 def test_connexion_facebook() -> Dict[str, Any]:
     """Teste la connexion à l'API Facebook"""
@@ -140,31 +395,8 @@ def test_connexion_facebook() -> Dict[str, Any]:
     
     print(f"✅ Page OK - {result.get('name', 'N/A')} (ID: {result.get('id', 'N/A')})")
     
-    # Test 3: Vérifier les permissions
-    print("\n🔍 Test 3/3: Vérification des permissions...")
-    url = f"{API_URL}/me/permissions"
-    params = {"access_token": FACEBOOK_ACCESS_TOKEN}
-    result = request_get(url, params=params, timeout=10)
-    
-    if result and 'data' in result:
-        permissions = [p['permission'] for p in result['data'] if p['status'] == 'granted']
-        print(f"✅ Permissions: {', '.join(permissions)}")
-        
-        permissions_requises = ['pages_manage_posts', 'pages_read_engagement']
-        manquantes = [p for p in permissions_requises if p not in permissions]
-        
-        if manquantes:
-            return {
-                "status": "warning", 
-                "message": f"Permissions manquantes: {', '.join(manquantes)}",
-                "permissions": permissions
-            }
-    
     return {"status": "success", "message": "Connexion Facebook OK"}
 
-# -----------------------------
-# Publication d'un post (CORRIGÉ)
-# -----------------------------
 def publier_sur_facebook(post: Dict[str, Any], with_image: bool = True) -> Dict[str, Any]:
     """Publie un post sur Facebook avec gestion robuste des erreurs"""
     debug_log(f"Starting publication for post: {post.get('titre', 'No title')}")
@@ -196,16 +428,15 @@ def publier_sur_facebook(post: Dict[str, Any], with_image: bool = True) -> Dict[
             debug_log("Publishing with image...")
             url = f"{API_URL}/{FACEBOOK_PAGE_ID}/photos"
             
-            # Préparer les données
-            data = {
-                "caption": message,
-                "access_token": FACEBOOK_ACCESS_TOKEN,
-                "published": "true"
-            }
-            
-            # Ouvrir l'image en mode binaire
+            # Ouvrir l'image
             with open(image_path, "rb") as img_file:
                 files = {"source": img_file}
+                data = {
+                    "caption": message,
+                    "access_token": FACEBOOK_ACCESS_TOKEN,
+                    "published": "true"
+                }
+                
                 debug_log("Sending POST request with image...")
                 response = request_post(url, data=data, files=files, timeout=45)
         
@@ -234,12 +465,16 @@ def publier_sur_facebook(post: Dict[str, Any], with_image: bool = True) -> Dict[
         post_id = response.get("id", "")
         debug_log(f"Publication réussie! Post ID: {post_id}")
         
+        # Démarrer automatiquement le service de commentaires pour ce nouveau post
+        if comment_service.running:
+            debug_log(f"Comment service will monitor new post: {post_id}")
+        
         return {
             "status": "success", 
             "message": "Publication réussie",
             "post_id": post_id,
             "plateforme": "Facebook",
-            "response": response
+            "comment_service": comment_service.running
         }
         
     except Exception as e:
@@ -247,117 +482,53 @@ def publier_sur_facebook(post: Dict[str, Any], with_image: bool = True) -> Dict[
         debug_log(error_msg)
         return {"status": "error", "message": error_msg}
 
-# -----------------------------
-# Publication en mode simulation (pour tests)
-# -----------------------------
-def publier_simulation(post: Dict[str, Any]) -> Dict[str, Any]:
-    """Mode simulation pour tests sans connexion réelle"""
-    debug_log("SIMULATION MODE - No actual Facebook publication")
-    
-    message = post.get("texte_marketing", "") or post.get("contenu", "")
-    image_path = post.get("image_path", "")
-    
-    return {
-        "status": "simulated",
-        "message": "Publication simulée (mode test)",
-        "post_id": f"simulated_{int(time.time())}",
-        "plateforme": "Facebook (simulé)",
-        "image_used": bool(image_path and os.path.exists(image_path)),
-        "text_length": len(message) if message else 0
-    }
-
-# -----------------------------
-# Lire réactions
-# -----------------------------
-def lire_reactions(post_id: str) -> List[Dict]:
-    """Lit les réactions d'un post Facebook"""
-    debug_log(f"Reading reactions for post: {post_id}")
-    
-    url = f"{API_URL}/{post_id}/reactions"
-    params = {"access_token": FACEBOOK_ACCESS_TOKEN, "fields": "id,name,type"}
-    data = request_get(url, params=params)
-    
-    if not data:
-        debug_log("No reactions data received")
-        return []
-    
-    reactions = data.get("data", [])
-    debug_log(f"Found {len(reactions)} reactions")
-    return reactions
-
-# -----------------------------
-# Traiter commentaires automatiquement
-# -----------------------------
 def traiter_commentaires(post_id: str) -> List[Dict]:
-    """Traite et répond aux commentaires d'un post"""
+    """Traite et répond aux commentaires d'un post (version simplifiée)"""
     debug_log(f"Processing comments for post: {post_id}")
     
-    url = f"{API_URL}/{post_id}/comments"
-    params = {"access_token": FACEBOOK_ACCESS_TOKEN, "fields": "id,message,from"}
-    data = request_get(url, params=params)
+    un_replied = obtenir_commentaires_non_repondus(post_id, hours_limit=24)
+    results = []
     
-    if not data:
-        debug_log("No comments data received")
-        return []
-    
-    commentaires = data.get("data", [])
-    debug_log(f"Found {len(commentaires)} comments")
-    resultats = []
-    
-    for com in commentaires:
-        commentaire = com.get("message", "")
-        com_id = com.get("id", "")
-        user_info = com.get("from", {})
-        user_id = user_info.get("id", "")
-        user_name = user_info.get("name", "Utilisateur")
-        
-        if not commentaire or not com_id:
-            continue
-        
-        debug_log(f"Processing comment from {user_name}: {commentaire[:50]}...")
-        
+    for comment in un_replied:
         try:
             # Générer réponse IA
-            reponse = generer_reponse_commentaire(commentaire)
+            reponse = generer_reponse_commentaire(comment['message'])
             
-            # Publier réponse (optionnel - commenter le code si vous voulez désactiver)
-            rep_url = f"{API_URL}/{com_id}/comments"
-            rep_data = {"message": reponse, "access_token": FACEBOOK_ACCESS_TOKEN}
-            response = request_post(rep_url, data=rep_data)
-            
-            if response:
-                debug_log(f"Reply posted successfully")
-            
-            resultats.append({
-                "user": user_name,
-                "commentaire_recu": commentaire,
-                "reponse_envoyee": reponse,
-                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
-            })
-            
+            # Répondre
+            if repondre_au_commentaire(comment['comment_id'], reponse):
+                results.append({
+                    "user": comment['user'],
+                    "commentaire_recu": comment['message'],
+                    "reponse_envoyee": reponse,
+                    "timestamp": datetime.now().isoformat(),
+                    "status": "replied"
+                })
+                
         except Exception as e:
-            debug_log(f"Error processing comment: {e}")
-            resultats.append({
-                "user": user_name,
-                "commentaire_recu": commentaire,
-                "error": str(e)
+            results.append({
+                "user": comment['user'],
+                "commentaire_recu": comment['message'],
+                "error": str(e),
+                "status": "error"
             })
     
-    return resultats
+    return results
 
 # -----------------------------
-# Envoyer un message privé
+# API pour le contrôle du service
 # -----------------------------
-def envoyer_message_prive(user_id: str, message: str) -> Optional[Dict]:
-    """Envoie un message privé sur Facebook Messenger"""
-    debug_log(f"Sending private message to user: {user_id}")
-    
-    # Vérifier si on a la permission 'pages_messaging'
-    url = f"{API_URL}/me/messages"
-    data = {
-        "recipient": {"id": user_id},
-        "message": {"text": message},
-        "access_token": FACEBOOK_ACCESS_TOKEN
-    }
-    
-    return request_post(url, data=data)
+def demarrer_service_commentaires():
+    """Démarre le service automatique de commentaires"""
+    return comment_service.demarrer_service()
+
+def arreter_service_commentaires():
+    """Arrête le service automatique de commentaires"""
+    return comment_service.arreter_service()
+
+def get_statut_service_commentaires():
+    """Retourne le statut du service de commentaires"""
+    return comment_service.get_status()
+
+def executer_traitement_manuel():
+    """Exécute un traitement manuel des anciens posts"""
+    return traiter_anciens_posts_et_commentaires()

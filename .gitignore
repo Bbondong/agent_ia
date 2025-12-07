@@ -1,6 +1,6 @@
 # .gitignore
 # Fichiers de configuration sensibles
-.env
+# .env
 credentials.json
 *.json
 

@@ -1,5 +1,5 @@
-# flask_app.py - Agent IA Ben Tech Marketing - COMPLET AVEC .ENV
-from flask import Flask, jsonify, request, render_template, session, redirect, url_for
+# flask_app.py - Agent IA Ben Tech Marketing - VERSION FINALE AVEC AUTHENTIFICATION
+from flask import Flask, jsonify, request, render_template, session, redirect, url_for, send_from_directory
 import os
 import sys
 import json
@@ -31,12 +31,20 @@ GOOGLE_CREDENTIALS_JSON = os.getenv('GOOGLE_CREDENTIALS_JSON')
 YOUR_EMAIL = os.getenv('YOUR_EMAIL')
 DEBUG = os.getenv('DEBUG', 'True').lower() == 'true'
 PORT = int(os.getenv('PORT', 5000))
+SECRET_KEY = os.getenv('SECRET_KEY', 'agent-ia-ben-tech-secret-key-prod-2024')
+
+# Configuration d'authentification
+ADMIN_USERNAME = os.getenv('ADMIN_USERNAME', 'benybadibanga13@gmail.com')
+ADMIN_PASSWORD = os.getenv('ADMIN_PASSWORD', 'Mukulubentech13@')
 
 # 1. Ajouter le chemin des modules
 current_dir = os.path.dirname(os.path.abspath(__file__))
 modules_path = os.path.join(current_dir, 'modules')
+interface_path = os.path.join(current_dir, 'interface')
 if modules_path not in sys.path:
     sys.path.append(modules_path)
+if interface_path not in sys.path:
+    sys.path.append(interface_path)
 
 # 2. Configurer les variables d'environnement pour les modules
 if GOOGLE_CREDENTIALS_JSON:
@@ -46,11 +54,60 @@ if GOOGLE_SHEET_ID:
 os.environ['GOOGLE_SHEET_NAME'] = GOOGLE_SHEET_NAME
 
 # ============================================
+# VÉRIFICATION DES MODULES
+# ============================================
+
+MODULES_STATUS = {
+    'ia': False,
+    'publier': False,
+    'google_sheets_db': False,
+    'plateformes.facebook': False
+}
+
+try:
+    from modules.ia import generer_contenu, get_statistiques_globales, audit_complet_performance
+    MODULES_STATUS['ia'] = True
+    print("✅ Module IA chargé")
+except ImportError as e:
+    print(f"❌ Erreur chargement module IA: {e}")
+
+try:
+    from modules.publier import (
+        demarrer_automatisation_complete, 
+        arreter_automatisation,
+        get_statut_complet,
+        publier_tous,
+        verifier_etat_publications,
+        traiter_anciens_commentaires_manuellement
+    )
+    MODULES_STATUS['publier'] = True
+    print("✅ Module Publication chargé")
+except ImportError as e:
+    print(f"⚠️ Module Publication non disponible: {e}")
+
+try:
+    from modules.google_sheets_db import gsheets_db, lire_historique_gsheets
+    MODULES_STATUS['google_sheets_db'] = True
+    print("✅ Module Google Sheets chargé")
+except ImportError as e:
+    print(f"⚠️ Module Google Sheets non disponible: {e}")
+
+try:
+    from modules.plateformes.facebook import test_connexion_facebook
+    MODULES_STATUS['plateformes.facebook'] = True
+    print("✅ Module Facebook chargé")
+except ImportError as e:
+    print(f"⚠️ Module Facebook non disponible: {e}")
+
+# ============================================
 # APPLICATION FLASK
 # ============================================
 
-app = Flask(__name__)
-app.secret_key = 'agent-ia-ben-tech-secret-key-' + os.urandom(24).hex()
+app = Flask(__name__, 
+           template_folder='interface',
+           static_folder='interface')
+app.secret_key = SECRET_KEY
+app.permanent_session_lifetime = timedelta(hours=24)  # Session de 24h
 
 # Variables globales pour le système automatique
 AUTOMATIC_SYSTEM = {
@@ -60,11 +117,116 @@ AUTOMATIC_SYSTEM = {
     'generation_count': 0,
     'next_generation': None,
     'generated_today': 0,
-    'daily_limit': 3
+    'daily_limit': 3,
+    'publication_running': False
+}
+
+# Système de vérification
+VERIFICATION_SYSTEM = {
+    'running': False,
+    'check_thread': None,
+    'last_check': None,
+    'check_interval': 10,  # Vérifier toutes les 10 secondes
+    'check_count': 0,
+    'last_messages': []
 }
 
 # ============================================
-# SYSTÈME AUTOMATIQUE - GÉNÉRATION 3 FOIS/JOUR
+# SYSTÈME DE VÉRIFICATION CHAQUE 10 SECONDES
+# ============================================
+
+def verifier_systeme_periodiquement():
+    """Vérifie l'état du système toutes les 10 secondes"""
+    while VERIFICATION_SYSTEM['running']:
+        try:
+            # Enregistrer la vérification
+            now = datetime.datetime.now()
+            VERIFICATION_SYSTEM['last_check'] = now.strftime("%Y-%m-%d %H:%M:%S")
+            VERIFICATION_SYSTEM['check_count'] += 1
+            
+            # Vérifier l'état des modules
+            messages = []
+            
+            # 1. Vérifier le système automatique
+            if AUTOMATIC_SYSTEM['running'] and not VERIFICATION_SYSTEM['running']:
+                messages.append("⚠️ Système automatique en marche mais vérification inactive")
+            
+            # 2. Vérifier les modules
+            for module_name, status in MODULES_STATUS.items():
+                if not status:
+                    messages.append(f"❌ Module {module_name} non chargé")
+            
+            # 3. Vérifier la connexion aux APIs
+            if not OPENAI_API_KEY:
+                messages.append("⚠️ OpenAI API non configurée")
+            
+            if not FACEBOOK_PAGE_ID or not FACEBOOK_ACCESS_TOKEN:
+                messages.append("⚠️ Facebook non configuré")
+            
+            # 4. Vérifier le dernier log
+            log_file = 'logs/system_check.log'
+            os.makedirs('logs', exist_ok=True)
+            
+            # Enregistrer la vérification
+            check_log = f"[{now}] Vérification #{VERIFICATION_SYSTEM['check_count']} - {len(messages)} messages\n"
+            if messages:
+                for msg in messages:
+                    check_log += f"  • {msg}\n"
+            
+            with open(log_file, 'a', encoding='utf-8') as f:
+                f.write(check_log)
+            
+            # Garder les derniers messages
+            if messages:
+                VERIFICATION_SYSTEM['last_messages'] = messages[-5:]  # Garder les 5 derniers
+            
+            # Afficher en console si debug
+            if DEBUG and messages:
+                print(f"[{now.strftime('%H:%M:%S')}] Vérification: {len(messages)} alertes")
+            
+        except Exception as e:
+            error_msg = f"[{datetime.datetime.now()}] ❌ Erreur vérification système: {str(e)}\n"
+            print(error_msg)
+            
+            os.makedirs('logs', exist_ok=True)
+            with open('logs/system_check_errors.log', 'a', encoding='utf-8') as f:
+                f.write(error_msg)
+        
+        # Attendre 10 secondes
+        time.sleep(VERIFICATION_SYSTEM['check_interval'])
+
+def demarrer_verification_systeme():
+    """Démarrer le système de vérification"""
+    if VERIFICATION_SYSTEM['running']:
+        print("⚠️ Système de vérification déjà en cours d'exécution")
+        return False
+    
+    try:
+        VERIFICATION_SYSTEM['running'] = True
+        VERIFICATION_SYSTEM['last_check'] = None
+        VERIFICATION_SYSTEM['check_count'] = 0
+        VERIFICATION_SYSTEM['last_messages'] = []
+        
+        # Démarrer le thread de vérification
+        thread = threading.Thread(target=verifier_systeme_periodiquement, daemon=True)
+        thread.start()
+        VERIFICATION_SYSTEM['check_thread'] = thread
+        
+        print(f"🔍 Système de vérification démarré (vérification toutes les {VERIFICATION_SYSTEM['check_interval']}s)")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Erreur démarrage vérification système: {e}")
+        return False
+
+def arreter_verification_systeme():
+    """Arrêter le système de vérification"""
+    VERIFICATION_SYSTEM['running'] = False
+    print("🛑 Système de vérification arrêté")
+    return True
+
+# ============================================
+# SYSTÈME AUTOMATIQUE AMÉLIORÉ
 # ============================================
 
 def generer_contenu_automatique():
@@ -83,21 +245,18 @@ def generer_contenu_automatique():
         print(f"🤖 [{datetime.datetime.now()}] Génération automatique #{AUTOMATIC_SYSTEM['generated_today'] + 1}/3...")
         
         # Importer la fonction de génération
-        try:
-            from modules.ia import generer_contenu
-        except ImportError as e:
-            print(f"❌ Erreur importation module IA: {e}")
+        if MODULES_STATUS['ia']:
+            contenu = generer_contenu()
+        else:
             # Fallback: créer un contenu basique
             contenu = {
                 'titre': f'Contenu automatique {datetime.datetime.now().strftime("%H:%M")}',
                 'theme': 'Automatique',
                 'service': 'Service généré',
                 'texte_marketing': 'Ce contenu a été généré automatiquement par le système.',
-                'date': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                'date': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                'agent_responsable': 'Système'
             }
-        else:
-            # Générer le contenu
-            contenu = generer_contenu()
         
         # Sauvegarder les statistiques
         AUTOMATIC_SYSTEM['last_generation'] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -125,8 +284,7 @@ def generer_contenu_automatique():
         log_entry = f"[{datetime.datetime.now()}] Génération #{AUTOMATIC_SYSTEM['generated_today']}/3: {contenu.get('titre', 'Sans titre')}\n"
         
         # Créer dossier logs si nécessaire
-        if not os.path.exists('logs'):
-            os.makedirs('logs')
+        os.makedirs('logs', exist_ok=True)
         
         with open('logs/auto_generation.log', 'a', encoding='utf-8') as f:
             f.write(log_entry)
@@ -140,16 +298,14 @@ def generer_contenu_automatique():
         error_msg = f"[{datetime.datetime.now()}] ❌ Erreur génération automatique: {str(e)}\n"
         print(error_msg)
         
-        if not os.path.exists('logs'):
-            os.makedirs('logs')
-            
+        os.makedirs('logs', exist_ok=True)
         with open('logs/auto_generation_errors.log', 'a', encoding='utf-8') as f:
             f.write(error_msg)
         return None
 
 def planifier_generations():
     """Planifie les générations automatiques 3 fois par jour"""
-    # Heures de génération : 9h, 14h, 19h (ajuste selon ton fuseau horaire)
+    # Heures de génération : 9h, 14h, 19h
     schedule.every().day.at("09:00").do(generer_contenu_automatique)
     schedule.every().day.at("14:00").do(generer_contenu_automatique)
     schedule.every().day.at("19:00").do(generer_contenu_automatique)
@@ -172,9 +328,9 @@ def demarrer_systeme_automatique():
         return False
     
     try:
-        # Créer le dossier logs si nécessaire
-        if not os.path.exists('logs'):
-            os.makedirs('logs')
+        # Créer les dossiers nécessaires
+        os.makedirs('logs', exist_ok=True)
+        os.makedirs('images_posts', exist_ok=True)
         
         # Réinitialiser le compteur quotidien
         today = datetime.datetime.now().strftime("%Y-%m-%d")
@@ -189,6 +345,16 @@ def demarrer_systeme_automatique():
         AUTOMATIC_SYSTEM['schedule_thread'] = thread
         
         print("🚀 Système automatique démarré - Génération 3x/jour (9h, 14h, 19h)")
+        
+        # Démarrer aussi la publication automatique
+        if MODULES_STATUS['publier']:
+            try:
+                result = demarrer_automatisation_complete()
+                if result.get('status') == 'started':
+                    AUTOMATIC_SYSTEM['publication_running'] = True
+                    print("📤 Publication automatique démarrée")
+            except Exception as e:
+                print(f"⚠️ Impossible de démarrer la publication: {e}")
         
         # Générer immédiatement si c'est l'heure
         maintenant = datetime.datetime.now()
@@ -207,271 +373,320 @@ def arreter_systeme_automatique():
     """Arrête le système automatique"""
     AUTOMATIC_SYSTEM['running'] = False
     schedule.clear()
+    
+    # Arrêter aussi la publication automatique
+    if MODULES_STATUS['publier'] and AUTOMATIC_SYSTEM['publication_running']:
+        try:
+            result = arreter_automatisation()
+            if result.get('status') == 'stopped':
+                AUTOMATIC_SYSTEM['publication_running'] = False
+                print("📤 Publication automatique arrêtée")
+        except Exception as e:
+            print(f"⚠️ Impossible d'arrêter la publication: {e}")
+    
     print("🛑 Système automatique arrêté")
     return True
 
 # ============================================
-# ROUTES PRINCIPALES
+# MIDDLEWARE D'AUTHENTIFICATION
+# ============================================
+
+def verifier_authentification():
+    """Vérifier si l'utilisateur est authentifié"""
+    if request.endpoint in ['login_page', 'static', 'serve_interface_files', 'home']:
+        return None
+    
+    if 'user' not in session:
+        return redirect(url_for('login_page'))
+    
+    return None
+
+@app.before_request
+def before_request():
+    """Vérifier l'authentification avant chaque requête"""
+    return verifier_authentification()
+
+# ============================================
+# ROUTES D'AUTHENTIFICATION
+# ============================================
+
+@app.route('/login', methods=['GET', 'POST'])
+def login_page():
+    """Page de connexion"""
+    # Si déjà connecté, rediriger vers le dashboard
+    if 'user' in session:
+        return redirect(url_for('dashboard'))
+    
+    # GET: Afficher le formulaire
+    if request.method == 'GET':
+        try:
+            return render_template('index.html')  # index.html est la page de login
+        except:
+            return '''
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Connexion - Ben Tech Marketing</title>
+                <style>
+                    body { font-family: Arial, sans-serif; background: #f5f5f5; padding: 50px; }
+                    .login-container { max-width: 400px; margin: 0 auto; background: white; padding: 40px; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+                    h1 { color: #007bff; text-align: center; margin-bottom: 30px; }
+                    .form-group { margin-bottom: 20px; }
+                    label { display: block; margin-bottom: 5px; font-weight: bold; }
+                    input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box; }
+                    .btn { width: 100%; padding: 12px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; }
+                    .btn:hover { background: #0056b3; }
+                    .error { color: red; text-align: center; margin-top: 10px; }
+                </style>
+            </head>
+            <body>
+                <div class="login-container">
+                    <h1>🔐 Connexion</h1>
+                    <form method="POST">
+                        <div class="form-group">
+                            <label for="username">Nom d'utilisateur:</label>
+                            <input type="text" id="username" name="username" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="password">Mot de passe:</label>
+                            <input type="password" id="password" name="password" required>
+                        </div>
+                        <button type="submit" class="btn">Se connecter</button>
+                    </form>
+                    {% if error %}
+                    <div class="error">{{ error }}</div>
+                    {% endif %}
+                </div>
+            </body>
+            </html>
+            '''
+    
+    # POST: Traiter la connexion
+    username = request.form.get('username')
+    password = request.form.get('password')
+    
+    if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
+        session['user'] = username
+        session.permanent = True
+        print(f"✅ Utilisateur {username} connecté")
+        return redirect(url_for('dashboard'))
+    else:
+        error = "Identifiants incorrects"
+        try:
+            return render_template('index.html', error=error)
+        except:
+            return f'''
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Connexion - Ben Tech Marketing</title>
+                <style>...</style>
+            </head>
+            <body>
+                <div class="login-container">
+                    <h1>🔐 Connexion</h1>
+                    <form method="POST">
+                        <div class="form-group">
+                            <label for="username">Nom d'utilisateur:</label>
+                            <input type="text" id="username" name="username" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="password">Mot de passe:</label>
+                            <input type="password" id="password" name="password" required>
+                        </div>
+                        <button type="submit" class="btn">Se connecter</button>
+                    </form>
+                    <div class="error">Identifiants incorrects</div>
+                </div>
+            </body>
+            </html>
+            '''
+
+@app.route('/logout')
+def logout():
+    """Déconnexion"""
+    session.pop('user', None)
+    print("👋 Utilisateur déconnecté")
+    return redirect(url_for('login_page'))
+
+# ============================================
+# ROUTES PRINCIPALES - UTILISANT interface/
 # ============================================
 
 @app.route('/')
 def home():
-    """Page d'accueil"""
-    system_status = "ACTIF" if AUTOMATIC_SYSTEM['running'] else "INACTIF"
-    next_gen = AUTOMATIC_SYSTEM.get('next_generation', 'Non planifié')
-    last_gen = AUTOMATIC_SYSTEM.get('last_generation', 'Aucune')
-    today_count = AUTOMATIC_SYSTEM.get('generated_today', 0)
+    """Page d'accueil - Redirige vers la page de login"""
+    return redirect(url_for('login_page'))
+
+@app.route('/dashboard')
+def dashboard():
+    """Dashboard principal - Nécessite authentification"""
+    # Récupérer les données pour le dashboard
+    stats_ia = {}
+    stats_publication = {}
+    posts_recent = []
     
-    return f'''
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>🤖 Agent IA Ben Tech</title>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <style>
-            body {{
-                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                margin: 0;
-                padding: 20px;
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                min-height: 100vh;
-                color: #333;
-            }}
-            .container {{
-                max-width: 1000px;
-                margin: 0 auto;
-                background: white;
-                border-radius: 20px;
-                padding: 40px;
-                box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            }}
-            .header {{
-                text-align: center;
-                margin-bottom: 40px;
-            }}
-            h1 {{
-                color: #667eea;
-                font-size: 2.5em;
-                margin-bottom: 10px;
-            }}
-            .status-box {{
-                display: inline-block;
-                padding: 10px 20px;
-                border-radius: 50px;
-                font-weight: bold;
-                margin: 10px;
-            }}
-            .status-active {{ background: #d4edda; color: #155724; }}
-            .status-inactive {{ background: #f8d7da; color: #721c24; }}
-            .stats-grid {{
-                display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-                gap: 20px;
-                margin: 30px 0;
-            }}
-            .stat-card {{
-                background: #f8f9fa;
-                padding: 20px;
-                border-radius: 15px;
-                text-align: center;
-                border-left: 5px solid #667eea;
-            }}
-            .stat-value {{
-                font-size: 2em;
-                font-weight: bold;
-                color: #764ba2;
-                margin: 10px 0;
-            }}
-            .btn-group {{
-                display: flex;
-                gap: 10px;
-                justify-content: center;
-                margin: 30px 0;
-                flex-wrap: wrap;
-            }}
-            .btn {{
-                padding: 15px 30px;
-                border: none;
-                border-radius: 10px;
-                font-size: 16px;
-                font-weight: bold;
-                cursor: pointer;
-                transition: all 0.3s;
-                display: inline-flex;
-                align-items: center;
-                gap: 10px;
-            }}
-            .btn-start {{ background: #28a745; color: white; }}
-            .btn-stop {{ background: #dc3545; color: white; }}
-            .btn-generate {{ background: #17a2b8; color: white; }}
-            .btn:hover {{ transform: translateY(-2px); box-shadow: 0 5px 15px rgba(0,0,0,0.2); }}
-            .endpoints {{
-                background: #f8f9fa;
-                padding: 20px;
-                border-radius: 15px;
-                margin-top: 30px;
-            }}
-            .endpoint-list {{
-                list-style: none;
-                padding: 0;
-            }}
-            .endpoint-list li {{
-                padding: 10px;
-                border-bottom: 1px solid #dee2e6;
-            }}
-            .endpoint-list li:last-child {{ border-bottom: none; }}
-            .config-info {{
-                background: #fff3cd;
-                padding: 15px;
-                border-radius: 10px;
-                margin: 20px 0;
-                border-left: 5px solid #ffc107;
-            }}
-        </style>
-    </head>
-    <body>
-        <div class="container">
+    if MODULES_STATUS['ia']:
+        try:
+            stats_ia = get_statistiques_globales()
+        except:
+            stats_ia = {'error': 'Données indisponibles'}
+    
+    if MODULES_STATUS['publier']:
+        try:
+            stats_publication = verifier_etat_publications()
+        except:
+            stats_publication = {'status': 'error'}
+    
+    # Récupérer les posts récents
+    if MODULES_STATUS['google_sheets_db']:
+        try:
+            df = lire_historique_gsheets()
+            if not df.empty:
+                posts_recent = df.tail(5).to_dict('records')
+        except:
+            posts_recent = []
+    
+    try:
+        # Passer les données à ton template dashboard.html existant
+        return render_template('dashboard.html',
+            system_status=AUTOMATIC_SYSTEM,
+            verification_status=VERIFICATION_SYSTEM,
+            stats_ia=stats_ia,
+            stats_publication=stats_publication,
+            posts_recent=posts_recent,
+            modules_status=MODULES_STATUS,
+            config={
+                'google_sheet_name': GOOGLE_SHEET_NAME,
+                'facebook_page_id': FACEBOOK_PAGE_ID,
+                'openai_configured': bool(OPENAI_API_KEY),
+                'unsplash_configured': bool(UNSPLASH_API_KEY)
+            },
+            now=datetime.datetime.now(),
+            user=session.get('user', 'Admin')
+        )
+    except Exception as e:
+        # Fallback si le template n'existe pas
+        return f'''
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Dashboard - Ben Tech</title>
+            <style>
+                body {{ font-family: Arial, sans-serif; padding: 20px; }}
+                .card {{ border: 1px solid #ddd; padding: 20px; margin: 10px; border-radius: 10px; }}
+                .status-active {{ color: green; font-weight: bold; }}
+                .status-inactive {{ color: red; }}
+                .header {{ display: flex; justify-content: space-between; align-items: center; }}
+                .user-info {{ color: #666; }}
+            </style>
+        </head>
+        <body>
             <div class="header">
-                <h1>🤖 Agent IA Ben Tech Marketing</h1>
-                <div class="status-box {'status-active' if AUTOMATIC_SYSTEM['running'] else 'status-inactive'}">
-                    Système automatique: {system_status}
+                <h1>Dashboard Ben Tech</h1>
+                <div class="user-info">
+                    Connecté en tant que: {session.get('user', 'Admin')}
+                    <a href="/logout" style="margin-left: 20px; color: #007bff;">Déconnexion</a>
                 </div>
             </div>
             
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <h3>📊 Aujourd'hui</h3>
-                    <div class="stat-value">{today_count}/3</div>
-                    <p>Générations quotidiennes</p>
-                </div>
-                <div class="stat-card">
-                    <h3>⏰ Prochaine</h3>
-                    <div class="stat-value">{next_gen.split()[1] if next_gen != 'Non planifié' else 'N/A'}</div>
-                    <p>{next_gen.split()[0] if next_gen != 'Non planifié' else 'Non planifié'}</p>
-                </div>
-                <div class="stat-card">
-                    <h3>📅 Dernière</h3>
-                    <div class="stat-value">{last_gen.split()[1] if last_gen != 'Aucune' else 'N/A'}</div>
-                    <p>{last_gen.split()[0] if last_gen != 'Aucune' else 'Aucune génération'}</p>
-                </div>
-                <div class="stat-card">
-                    <h3>🎯 Total</h3>
-                    <div class="stat-value">{AUTOMATIC_SYSTEM.get('generation_count', 0)}</div>
-                    <p>Générations totales</p>
-                </div>
+            <div class="card">
+                <h3>Statut système: <span class="{'status-active' if AUTOMATIC_SYSTEM['running'] else 'status-inactive'}">
+                    {'ACTIF' if AUTOMATIC_SYSTEM['running'] else 'INACTIF'}
+                </span></h3>
+                <p>Générations aujourd'hui: {AUTOMATIC_SYSTEM['generated_today']}/3</p>
+                
+                <h4>Système de vérification: <span class="{'status-active' if VERIFICATION_SYSTEM['running'] else 'status-inactive'}">
+                    {'ACTIF' if VERIFICATION_SYSTEM['running'] else 'INACTIF'}
+                </span></h4>
+                <p>Dernière vérification: {VERIFICATION_SYSTEM.get('last_check', 'Jamais')}</p>
+                <p>Vérifications effectuées: {VERIFICATION_SYSTEM.get('check_count', 0)}</p>
+                
+                <button onclick="startSystem()">Démarrer tout</button>
+                <button onclick="stopSystem()">Arrêter tout</button>
+                <button onclick="startVerification()">Démarrer vérification</button>
+                <button onclick="stopVerification()">Arrêter vérification</button>
             </div>
-            
-            <div class="btn-group">
-                <button class="btn btn-start" onclick="startSystem()" {'disabled' if AUTOMATIC_SYSTEM['running'] else ''}>
-                    ▶️ Démarrer Auto
-                </button>
-                <button class="btn btn-stop" onclick="stopSystem()" {'disabled' if not AUTOMATIC_SYSTEM['running'] else ''}>
-                    ⏹️ Arrêter Auto
-                </button>
-                <button class="btn btn-generate" onclick="generateNow()">
-                    ⚡ Générer Maintenant
-                </button>
-            </div>
-            
-            <div class="config-info">
-                <h3>🔧 Configuration Actuelle</h3>
-                <p><strong>Google Sheets:</strong> {GOOGLE_SHEET_NAME}</p>
-                <p><strong>Sheet ID:</strong> {GOOGLE_SHEET_ID if GOOGLE_SHEET_ID else 'Non défini'}</p>
-                <p><strong>OpenAI:</strong> {'✅ Configuré' if OPENAI_API_KEY else '❌ Non configuré'}</p>
-                <p><strong>Facebook:</strong> {'✅ Page configurée' if FACEBOOK_PAGE_ID else '❌ Non configuré'}</p>
-                <p><strong>Unsplash:</strong> {'✅ Configuré' if UNSPLASH_API_KEY else '❌ Non configuré'}</p>
-            </div>
-            
-            <div class="endpoints">
-                <h3>🔌 API Endpoints</h3>
-                <ul class="endpoint-list">
-                    <li><a href="/api/status" target="_blank">/api/status</a> - Statut du système</li>
-                    <li><a href="/api/generate" target="_blank">/api/generate</a> - Générer manuellement</li>
-                    <li><a href="/api/auto/start" target="_blank">/api/auto/start</a> - Démarrer automatique</li>
-                    <li><a href="/api/auto/stop" target="_blank">/api/auto/stop</a> - Arrêter automatique</li>
-                    <li><a href="/api/auto/stats" target="_blank">/api/auto/stats</a> - Statistiques auto</li>
-                    <li><a href="/api/config" target="_blank">/api/config</a> - Configuration</li>
-                    <li><a href="/api/health" target="_blank">/api/health</a> - Santé API</li>
-                </ul>
-            </div>
-        </div>
-        
-        <script>
-            function startSystem() {{
-                fetch('/api/auto/start', {{ method: 'POST' }})
-                    .then(response => response.json())
-                    .then(data => {{
-                        alert(data.message);
-                        location.reload();
-                    }});
-            }}
-            
-            function stopSystem() {{
-                fetch('/api/auto/stop', {{ method: 'POST' }})
-                    .then(response => response.json())
-                    .then(data => {{
-                        alert(data.message);
-                        location.reload();
-                    }});
-            }}
-            
-            function generateNow() {{
-                fetch('/api/generate/now', {{ method: 'POST' }})
-                    .then(response => response.json())
-                    .then(data => {{
-                        alert(data.message);
-                        location.reload();
-                    }});
-            }}
-            
-            // Actualiser toutes les 30 secondes
-            setInterval(() => {{
-                fetch('/api/auto/stats')
-                    .then(response => response.json())
-                    .then(data => {{
-                        if (data.success) {{
-                            document.querySelector('.stat-card:nth-child(1) .stat-value').textContent = 
-                                data.stats.generated_today + '/3';
-                            document.querySelector('.stat-card:nth-child(2) .stat-value').textContent = 
-                                data.stats.next_generation ? data.stats.next_generation.split()[1] : 'N/A';
-                            document.querySelector('.stat-card:nth-child(3) .stat-value').textContent = 
-                                data.stats.last_generation ? data.stats.last_generation.split()[1] : 'N/A';
-                        }}
-                    }});
-            }}, 30000);
-        </script>
-    </body>
-    </html>
-    '''
+            <script>
+                function startSystem() {{ 
+                    fetch('/api/auto/start', {{method: 'POST'}})
+                    .then(() => fetch('/api/verification/start', {{method: 'POST'}}))
+                    .then(() => location.reload());
+                }}
+                function stopSystem() {{ 
+                    fetch('/api/auto/stop', {{method: 'POST'}})
+                    .then(() => fetch('/api/verification/stop', {{method: 'POST'}}))
+                    .then(() => location.reload());
+                }}
+                function startVerification() {{ 
+                    fetch('/api/verification/start', {{method: 'POST'}}).then(() => location.reload()); 
+                }}
+                function stopVerification() {{ 
+                    fetch('/api/verification/stop', {{method: 'POST'}}).then(() => location.reload()); 
+                }}
+            </script>
+        </body>
+        </html>
+        '''
 
 # ============================================
-# ROUTES API
+# SERVIR LES FICHIERS STATIQUES DE interface/
+# ============================================
+
+@app.route('/interface/<path:filename>')
+def serve_interface_files(filename):
+    """Servir les fichiers statiques du dossier interface/"""
+    return send_from_directory('interface', filename)
+
+@app.route('/static/<path:filename>')
+def serve_static_files(filename):
+    """Servir les fichiers statiques (compatibilité)"""
+    return send_from_directory('interface', filename)
+
+# ============================================
+# ROUTES API (inchangées de ta version)
 # ============================================
 
 @app.route('/api/status')
 def api_status():
     """Statut complet du système"""
-    config_status = {
-        'openai_configured': bool(OPENAI_API_KEY),
-        'facebook_configured': bool(FACEBOOK_PAGE_ID and FACEBOOK_ACCESS_TOKEN),
-        'unsplash_configured': bool(UNSPLASH_API_KEY),
-        'google_sheets_configured': bool(GOOGLE_CREDENTIALS_JSON or os.path.exists('credentials.json')),
-        'sheet_id_configured': bool(GOOGLE_SHEET_ID)
-    }
+    # Tester la connexion Facebook
+    facebook_status = {'status': 'non_configured'}
+    if MODULES_STATUS['plateformes.facebook'] and FACEBOOK_PAGE_ID and FACEBOOK_ACCESS_TOKEN:
+        try:
+            facebook_status = test_connexion_facebook()
+        except:
+            facebook_status = {'status': 'error', 'message': 'Test échoué'}
+    
+    # Statut Google Sheets
+    sheets_status = {'status': 'non_configured'}
+    if MODULES_STATUS['google_sheets_db']:
+        try:
+            info = gsheets_db.get_sheet_info()
+            sheets_status = info
+        except:
+            sheets_status = {'status': 'error'}
     
     return jsonify({
         'success': True,
         'system': {
-            'automatic_system': 'running' if AUTOMATIC_SYSTEM['running'] else 'stopped',
+            'automatic_generation': 'running' if AUTOMATIC_SYSTEM['running'] else 'stopped',
+            'automatic_publication': 'running' if AUTOMATIC_SYSTEM['publication_running'] else 'stopped',
+            'verification_system': 'running' if VERIFICATION_SYSTEM['running'] else 'stopped',
             'generation_count': AUTOMATIC_SYSTEM.get('generation_count', 0),
             'generated_today': AUTOMATIC_SYSTEM.get('generated_today', 0),
-            'daily_limit': AUTOMATIC_SYSTEM.get('daily_limit', 3),
             'last_generation': AUTOMATIC_SYSTEM.get('last_generation'),
             'next_generation': AUTOMATIC_SYSTEM.get('next_generation'),
-            'last_reset': AUTOMATIC_SYSTEM.get('last_reset')
+            'last_verification': VERIFICATION_SYSTEM.get('last_check'),
+            'verification_count': VERIFICATION_SYSTEM.get('check_count', 0),
+            'modules': MODULES_STATUS
         },
-        'config': config_status,
+        'services': {
+            'facebook': facebook_status,
+            'google_sheets': sheets_status,
+            'openai': 'configured' if OPENAI_API_KEY else 'not_configured',
+            'unsplash': 'configured' if UNSPLASH_API_KEY else 'not_configured'
+        },
         'timestamp': datetime.datetime.now().isoformat()
     })
 
@@ -479,14 +694,45 @@ def api_status():
 def api_generate():
     """Générer du contenu manuellement"""
     try:
-        from modules.ia import generer_contenu
-        contenu = generer_contenu()
-        
+        if MODULES_STATUS['ia']:
+            contenu = generer_contenu()
+            
+            # Publier automatiquement si configuré
+            if MODULES_STATUS['publier'] and request.args.get('publish', 'false').lower() == 'true':
+                try:
+                    publier_tous()
+                except Exception as e:
+                    print(f"⚠️ Publication automatique échouée: {e}")
+            
+            return jsonify({
+                'success': True,
+                'message': 'Contenu généré avec succès',
+                'data': contenu,
+                'timestamp': datetime.datetime.now().isoformat()
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': 'Module IA non disponible'
+            }), 503
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Erreur: {str(e)}'
+        }), 500
+
+@app.route('/api/publish', methods=['POST'])
+def api_publish():
+    """Publier manuellement les posts non publiés"""
+    if not MODULES_STATUS['publier']:
+        return jsonify({'success': False, 'message': 'Module publication non disponible'}), 503
+    
+    try:
+        result = publier_tous()
         return jsonify({
             'success': True,
-            'message': 'Contenu généré avec succès',
-            'data': contenu,
-            'timestamp': datetime.datetime.now().isoformat()
+            'message': 'Publication manuelle lancée',
+            'result': result
         })
     except Exception as e:
         return jsonify({
@@ -494,30 +740,13 @@ def api_generate():
             'message': f'Erreur: {str(e)}'
         }), 500
 
-@app.route('/api/generate/now', methods=['POST'])
-def api_generate_now():
-    """Générer du contenu immédiatement (manuel)"""
-    contenu = generer_contenu_automatique()
-    
-    if contenu:
-        return jsonify({
-            'success': True,
-            'message': f'Contenu généré: {contenu.get("titre", "Sans titre")}',
-            'data': contenu
-        })
-    else:
-        return jsonify({
-            'success': False,
-            'message': 'Échec de la génération ou limite quotidienne atteinte'
-        }), 400
-
 @app.route('/api/auto/start', methods=['POST'])
 def api_auto_start():
     """Démarrer le système automatique"""
     if demarrer_systeme_automatique():
         return jsonify({
             'success': True,
-            'message': 'Système automatique démarré - Génération 3x/jour à 9h, 14h, 19h'
+            'message': 'Système automatique démarré'
         })
     else:
         return jsonify({
@@ -546,6 +775,7 @@ def api_auto_stats():
         'success': True,
         'stats': {
             'running': AUTOMATIC_SYSTEM['running'],
+            'publication_running': AUTOMATIC_SYSTEM['publication_running'],
             'generation_count': AUTOMATIC_SYSTEM.get('generation_count', 0),
             'generated_today': AUTOMATIC_SYSTEM.get('generated_today', 0),
             'daily_limit': AUTOMATIC_SYSTEM.get('daily_limit', 3),
@@ -555,6 +785,144 @@ def api_auto_stats():
         }
     })
 
+# ============================================
+# ROUTES API POUR LE SYSTÈME DE VÉRIFICATION
+# ============================================
+
+@app.route('/api/verification/start', methods=['POST'])
+def api_verification_start():
+    """Démarrer le système de vérification"""
+    if demarrer_verification_systeme():
+        return jsonify({
+            'success': True,
+            'message': 'Système de vérification démarré'
+        })
+    else:
+        return jsonify({
+            'success': False,
+            'message': 'Impossible de démarrer le système de vérification'
+        }), 400
+
+@app.route('/api/verification/stop', methods=['POST'])
+def api_verification_stop():
+    """Arrêter le système de vérification"""
+    if arreter_verification_systeme():
+        return jsonify({
+            'success': True,
+            'message': 'Système de vérification arrêté'
+        })
+    else:
+        return jsonify({
+            'success': False,
+            'message': 'Impossible d\'arrêter le système de vérification'
+        }), 400
+
+@app.route('/api/verification/stats')
+def api_verification_stats():
+    """Statistiques du système de vérification"""
+    return jsonify({
+        'success': True,
+        'stats': {
+            'running': VERIFICATION_SYSTEM['running'],
+            'check_interval': VERIFICATION_SYSTEM['check_interval'],
+            'check_count': VERIFICATION_SYSTEM.get('check_count', 0),
+            'last_check': VERIFICATION_SYSTEM.get('last_check'),
+            'last_messages': VERIFICATION_SYSTEM.get('last_messages', [])
+        }
+    })
+
+@app.route('/api/posts')
+def api_posts():
+    """Récupérer les posts"""
+    try:
+        if MODULES_STATUS['google_sheets_db']:
+            df = lire_historique_gsheets()
+            if not df.empty:
+                posts = df.to_dict('records')
+                return jsonify({
+                    'success': True,
+                    'posts': posts,
+                    'count': len(posts)
+                })
+            else:
+                return jsonify({
+                    'success': True,
+                    'posts': [],
+                    'count': 0,
+                    'message': 'Aucun post disponible'
+                })
+        else:
+            return jsonify({
+                'success': False,
+                'message': 'Google Sheets non disponible'
+            }), 503
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Erreur: {str(e)}'
+        }), 500
+
+@app.route('/api/stats')
+def api_stats():
+    """Statistiques complètes"""
+    try:
+        if MODULES_STATUS['ia']:
+            stats = get_statistiques_globales()
+            return jsonify({
+                'success': True,
+                'stats': stats
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': 'Module IA non disponible'
+            }), 503
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Erreur: {str(e)}'
+        }), 500
+
+@app.route('/api/audit')
+def api_audit():
+    """Audit complet des performances"""
+    try:
+        if MODULES_STATUS['ia']:
+            audit = audit_complet_performance()
+            return jsonify({
+                'success': True,
+                'audit': audit
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': 'Module IA non disponible'
+            }), 503
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Erreur: {str(e)}'
+        }), 500
+
+@app.route('/api/comments/process', methods=['POST'])
+def api_comments_process():
+    """Traiter les anciens commentaires"""
+    if not MODULES_STATUS['publier']:
+        return jsonify({'success': False, 'message': 'Module publication non disponible'}), 503
+    
+    try:
+        result = traiter_anciens_commentaires_manuellement()
+        return jsonify({
+            'success': True,
+            'message': 'Traitement des commentaires lancé',
+            'result': result
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Erreur: {str(e)}'
+        }), 500
+
 @app.route('/api/config')
 def api_config():
     """Afficher la configuration"""
@@ -563,46 +931,68 @@ def api_config():
         'config': {
             'openai_model': OPENAI_MODEL,
             'google_sheet_name': GOOGLE_SHEET_NAME,
-            'google_sheet_id': GOOGLE_SHEET_ID,
-            'facebook_page_id': FACEBOOK_PAGE_ID,
-            'your_email': YOUR_EMAIL,
+            'google_sheet_id': GOOGLE_SHEET_ID if GOOGLE_SHEET_ID else 'Non défini',
+            'facebook_page_id': FACEBOOK_PAGE_ID if FACEBOOK_PAGE_ID else 'Non défini',
+            'your_email': YOUR_EMAIL if YOUR_EMAIL else 'Non défini',
             'automatic_schedule': '9h, 14h, 19h (3x/jour)',
-            'daily_limit': 3
+            'daily_limit': 3,
+            'verification_interval': f'{VERIFICATION_SYSTEM["check_interval"]} secondes',
+            'port': PORT,
+            'debug': DEBUG
         },
-        'status': {
-            'automatic_system': 'running' if AUTOMATIC_SYSTEM['running'] else 'stopped',
-            'openai_configured': bool(OPENAI_API_KEY),
-            'facebook_configured': bool(FACEBOOK_PAGE_ID),
-            'unsplash_configured': bool(UNSPLASH_API_KEY),
-            'google_sheets_configured': bool(GOOGLE_CREDENTIALS_JSON)
-        }
+        'modules': MODULES_STATUS
     })
 
 @app.route('/api/health')
 def api_health():
     """Vérification de santé de l'API"""
-    return jsonify({
+    health_status = {
         'status': 'healthy',
         'service': 'Agent IA Ben Tech Marketing',
-        'version': '2.0.0',
-        'automatic_system': AUTOMATIC_SYSTEM['running'],
+        'version': '3.0.0',
         'timestamp': datetime.datetime.now().isoformat(),
-        'uptime': 'N/A'  # Tu peux ajouter un calcul d'uptime si tu veux
-    })
+        'components': {
+            'flask': 'running',
+            'automatic_generation': 'running' if AUTOMATIC_SYSTEM['running'] else 'stopped',
+            'verification_system': 'running' if VERIFICATION_SYSTEM['running'] else 'stopped',
+            'modules': {k: 'loaded' if v else 'missing' for k, v in MODULES_STATUS.items()}
+        }
+    }
+    
+    # Vérifier les services externes
+    if OPENAI_API_KEY:
+        health_status['components']['openai'] = 'configured'
+    else:
+        health_status['components']['openai'] = 'not_configured'
+        health_status['status'] = 'degraded'
+    
+    if FACEBOOK_PAGE_ID and FACEBOOK_ACCESS_TOKEN:
+        health_status['components']['facebook'] = 'configured'
+    else:
+        health_status['components']['facebook'] = 'not_configured'
+    
+    return jsonify(health_status)
 
 # ============================================
 # UTILITAIRES
 # ============================================
 
-@app.route('/api/logs/auto')
-def api_logs_auto():
-    """Lire les logs de génération automatique"""
+@app.route('/api/logs/<log_type>')
+def api_logs(log_type):
+    """Lire les logs"""
+    valid_logs = ['auto_generation', 'auto_generation_errors', 'system', 'publications', 'system_check', 'system_check_errors']
+    
+    if log_type not in valid_logs:
+        return jsonify({'success': False, 'message': 'Type de log invalide'}), 400
+    
+    log_file = f'logs/{log_type}.log'
+    
     try:
-        if os.path.exists('logs/auto_generation.log'):
-            with open('logs/auto_generation.log', 'r', encoding='utf-8') as f:
-                logs = f.readlines()[-50:]  # 50 dernières lignes
+        if os.path.exists(log_file):
+            with open(log_file, 'r', encoding='utf-8') as f:
+                logs = f.readlines()[-100:]  # 100 dernières lignes
         else:
-            logs = ["Aucun log disponible"]
+            logs = [f"Fichier {log_file} non trouvé"]
         
         return jsonify({
             'success': True,
@@ -617,7 +1007,7 @@ def api_logs_auto():
 
 @app.route('/api/reset/counter', methods=['POST'])
 def api_reset_counter():
-    """Réinitialiser le compteur quotidien (admin)"""
+    """Réinitialiser le compteur quotidien"""
     AUTOMATIC_SYSTEM['generated_today'] = 0
     AUTOMATIC_SYSTEM['last_reset'] = datetime.datetime.now().strftime("%Y-%m-%d")
     
@@ -628,35 +1018,69 @@ def api_reset_counter():
     })
 
 # ============================================
+# GESTION D'ERREURS
+# ============================================
+
+@app.errorhandler(404)
+def not_found(error):
+    return jsonify({'success': False, 'message': 'Route non trouvée'}), 404
+
+@app.errorhandler(500)
+def server_error(error):
+    return jsonify({'success': False, 'message': 'Erreur interne du serveur'}), 500
+
+# ============================================
 # DÉMARRAGE DE L'APPLICATION
 # ============================================
 
 def init_application():
     """Initialiser l'application"""
-    print("=" * 60)
-    print("🤖 Agent IA Ben Tech Marketing")
-    print("=" * 60)
+    print("=" * 70)
+    print("🤖 AGENT IA BEN TECH MARKETING - VERSION FINALE AVEC AUTH")
+    print("=" * 70)
     print(f"📅 Démarrage: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"🌐 URL: http://localhost:{PORT}")
-    print(f"⚡ Mode auto: {'ACTIVÉ au démarrage' if DEBUG else 'DÉSACTIVÉ'}")
+    print(f"🔐 Login: http://localhost:{PORT}/login")
+    print(f"👤 Utilisateur: {ADMIN_USERNAME}")
+    print(f"⚡ Mode auto: {'ACTIVÉ' if DEBUG else 'DÉSACTIVÉ'}")
     print(f"🎯 Génération: 3x/jour à 9h, 14h, 19h")
-    print("-" * 60)
-    print("🔧 Configuration:")
+    print(f"🔍 Vérification: toutes les {VERIFICATION_SYSTEM['check_interval']}s")
+    print("-" * 70)
+    print("📦 MODULES CHARGÉS:")
+    for module, status in MODULES_STATUS.items():
+        print(f"  • {module}: {'✅' if status else '❌'}")
+    print("-" * 70)
+    print("🔧 CONFIGURATION:")
     print(f"  • OpenAI: {'✅' if OPENAI_API_KEY else '❌'} {OPENAI_MODEL}")
     print(f"  • Google Sheets: {'✅' if GOOGLE_CREDENTIALS_JSON else '❌'} {GOOGLE_SHEET_NAME}")
     print(f"  • Facebook: {'✅' if FACEBOOK_PAGE_ID else '❌'}")
     print(f"  • Unsplash: {'✅' if UNSPLASH_API_KEY else '❌'}")
-    print("-" * 60)
-    print("📋 Endpoints:")
-    print(f"  • http://localhost:{PORT}/ - Dashboard")
-    print(f"  • http://localhost:{PORT}/api/status - Statut")
-    print(f"  • http://localhost:{PORT}/api/health - Santé")
-    print("=" * 60)
+    print("-" * 70)
+    print("📋 ENDPOINTS PRINCIPAUX:")
+    print(f"  • http://localhost:{PORT}/login - Page de connexion")
+    print(f"  • http://localhost:{PORT}/dashboard - Dashboard (après login)")
+    print(f"  • http://localhost:{PORT}/api/status - Statut complet")
+    print(f"  • http://localhost:{PORT}/api/verification/stats - Statut vérification")
+    print(f"  • http://localhost:{PORT}/api/health - Santé système")
+    print("=" * 70)
+    
+    # Créer les dossiers nécessaires
+    os.makedirs('logs', exist_ok=True)
+    os.makedirs('images_posts', exist_ok=True)
+    
+    # Vérifier que le dossier interface existe
+    if not os.path.exists('interface'):
+        print("⚠️ Dossier 'interface' non trouvé - création...")
+        os.makedirs('interface', exist_ok=True)
     
     # Démarrer automatiquement en mode debug
-    if DEBUG and not AUTOMATIC_SYSTEM['running']:
-        print("🚀 Démarrage automatique du système...")
-        demarrer_systeme_automatique()
+    if DEBUG:
+        print("🔍 Démarrage automatique du système de vérification...")
+        demarrer_verification_systeme()
+        
+        if not AUTOMATIC_SYSTEM['running']:
+            print("🚀 Démarrage automatique du système...")
+            demarrer_systeme_automatique()
 
 if __name__ == '__main__':
     # Initialiser l'application
@@ -667,5 +1091,6 @@ if __name__ == '__main__':
         host='0.0.0.0',
         port=PORT,
         debug=DEBUG,
-        threaded=True
+        threaded=True,
+        use_reloader=False  # Important pour éviter les doubles threads
     )
