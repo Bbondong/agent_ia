@@ -1,0 +1,28 @@
+# .gitignore
+# Fichiers de configuration sensibles
+.env
+credentials.json
+*.json
+
+# Environnements virtuels
+venv/
+env/
+.venv/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+tst
+procfile
+# Cache Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Logs
+*.log

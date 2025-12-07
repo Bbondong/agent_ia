@@ -1,0 +1,1111 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Agent IA Marketing</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica', 'Arial', sans-serif;
+            background: linear-gradient(135deg, #0A1A2F 0%, #162a45 100%);
+            color: #ffffff;
+            height: 100vh;
+            width: 100%;
+            overflow-x: hidden;
+        }
+
+        .dashboard-container {
+            width: 100%;
+            height: 100%;
+            min-height: 100%;
+            display: block;
+        }
+
+        .dashboard-layout {
+            display: flex;
+            width: 100%;
+            height: 100%;
+            min-height: 100%;
+        }
+
+        .sidebar {
+            width: 280px;
+            background: rgba(10, 26, 47, 0.95);
+            border-right: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            position: fixed;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            overflow-y: auto;
+        }
+
+        .sidebar-header {
+            padding: 30px 25px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .sidebar-logo {
+            font-size: 22px;
+            font-weight: 700;
+            color: #ffffff;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .sidebar-logo-icon {
+            width: 30px;
+            height: 30px;
+            background: #3498db;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .sidebar-menu {
+            flex: 1;
+            padding: 20px 0;
+        }
+
+        .menu-item {
+            padding: 14px 25px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 15px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .menu-item:hover {
+            background: rgba(52, 152, 219, 0.1);
+            color: #3498db;
+        }
+
+        .menu-item.active {
+            background: rgba(52, 152, 219, 0.15);
+            color: #3498db;
+            border-left: 3px solid #3498db;
+        }
+
+        .menu-icon {
+            width: 20px;
+            height: 20px;
+        }
+
+        .sidebar-footer {
+            padding: 20px 25px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .btn-logout {
+            width: 100%;
+            padding: 12px;
+            background: rgba(231, 76, 60, 0.15);
+            color: #e74c3c;
+            border: 1px solid rgba(231, 76, 60, 0.3);
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .btn-logout:hover {
+            background: rgba(231, 76, 60, 0.25);
+            border-color: #e74c3c;
+        }
+
+        .main-content {
+            flex: 1;
+            margin-left: 280px;
+            padding: 40px;
+            width: calc(100% - 280px);
+            overflow-y: auto;
+            height: 100vh;
+        }
+
+        .content-section {
+            display: none;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .content-section.active {
+            display: block;
+        }
+
+        .page-header {
+            margin-bottom: 35px;
+        }
+
+        .page-title {
+            font-size: 32px;
+            font-weight: 700;
+            color: #ffffff;
+            margin-bottom: 8px;
+        }
+
+        .page-subtitle {
+            font-size: 15px;
+            color: rgba(255, 255, 255, 0.6);
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 25px;
+            margin-bottom: 35px;
+        }
+
+        .stat-card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            padding: 28px;
+            transition: all 0.3s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+            border-color: rgba(52, 152, 219, 0.3);
+        }
+
+        .stat-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 15px;
+        }
+
+        .stat-icon {
+            width: 48px;
+            height: 48px;
+            background: rgba(52, 152, 219, 0.15);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .stat-label {
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.6);
+            margin-bottom: 8px;
+        }
+
+        .stat-value {
+            font-size: 36px;
+            font-weight: 700;
+            color: #ffffff;
+        }
+
+        .stat-change {
+            font-size: 13px;
+            color: #2ecc71;
+            margin-top: 8px;
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            padding: 30px;
+            margin-bottom: 25px;
+        }
+
+        .card-title {
+            font-size: 20px;
+            font-weight: 600;
+            color: #ffffff;
+            margin-bottom: 20px;
+        }
+
+        .form-row {
+            margin-bottom: 20px;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            color: rgba(255, 255, 255, 0.9);
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 14px 16px;
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 12px;
+            color: #ffffff;
+            font-size: 15px;
+            transition: all 0.3s ease;
+        }
+
+        .form-input:focus {
+            outline: none;
+            background: rgba(255, 255, 255, 0.12);
+            border-color: #3498db;
+        }
+
+        .form-input::placeholder {
+            color: rgba(255, 255, 255, 0.4);
+        }
+
+        .btn-primary {
+            padding: 14px 28px;
+            background: #3498db;
+            color: #ffffff;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .btn-primary:hover {
+            background: #2980b9;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(52, 152, 219, 0.4);
+        }
+
+        .btn-primary:active {
+            transform: translateY(0);
+        }
+
+        .btn-secondary {
+            padding: 12px 24px;
+            background: rgba(52, 152, 219, 0.15);
+            color: #3498db;
+            border: 1px solid rgba(52, 152, 219, 0.3);
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .btn-secondary:hover {
+            background: rgba(52, 152, 219, 0.25);
+            border-color: #3498db;
+        }
+
+        .result-box {
+            margin-top: 20px;
+            padding: 16px;
+            background: rgba(46, 204, 113, 0.1);
+            border: 1px solid rgba(46, 204, 113, 0.3);
+            border-radius: 10px;
+            display: none;
+        }
+
+        .result-box.show {
+            display: block;
+            animation: slideDown 0.3s ease;
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .result-label {
+            font-size: 13px;
+            color: rgba(255, 255, 255, 0.7);
+            margin-bottom: 8px;
+        }
+
+        .result-value {
+            font-size: 14px;
+            color: #2ecc71;
+            word-break: break-all;
+            font-family: 'Courier New', monospace;
+        }
+
+        .table-container {
+            overflow-x: auto;
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .data-table thead {
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        .data-table th {
+            padding: 16px;
+            text-align: left;
+            font-size: 13px;
+            font-weight: 600;
+            color: rgba(255, 255, 255, 0.9);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .data-table td {
+            padding: 14px 16px;
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.8);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .data-table tbody tr:hover {
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        .log-list {
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 10px;
+            padding: 15px;
+            max-height: 250px;
+            overflow-y: auto;
+        }
+
+        .log-item {
+            padding: 10px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            font-size: 13px;
+            color: rgba(255, 255, 255, 0.7);
+        }
+
+        .log-item:last-child {
+            border-bottom: none;
+        }
+
+        .settings-section {
+            margin-bottom: 30px;
+        }
+
+        .settings-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #ffffff;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .setting-item {
+            padding: 16px;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 10px;
+            margin-bottom: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .setting-label {
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.9);
+        }
+
+        .toggle-switch {
+            width: 50px;
+            height: 26px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 13px;
+            position: relative;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .toggle-switch.active {
+            background: #3498db;
+        }
+
+        .toggle-slider {
+            width: 20px;
+            height: 20px;
+            background: #ffffff;
+            border-radius: 50%;
+            position: absolute;
+            top: 3px;
+            left: 3px;
+            transition: all 0.3s ease;
+        }
+
+        .toggle-switch.active .toggle-slider {
+            left: 27px;
+        }
+
+        .status-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 600;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+
+        .status-online {
+            background: #2ecc71;
+        }
+
+        .status-active {
+            background: #3498db;
+        }
+
+        .status-warning {
+            background: #f39c12;
+        }
+
+        .loading {
+            opacity: 0.7;
+            pointer-events: none;
+            position: relative;
+        }
+
+        .loading::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 20px;
+            height: 20px;
+            margin: -10px 0 0 -10px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-top: 2px solid #ffffff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Styles spécifiques pour le chat */
+        .chat-messages {
+            height: 400px;
+            overflow-y: auto;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: 10px;
+            margin-bottom: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .message {
+            display: flex;
+            gap: 12px;
+            max-width: 80%;
+        }
+
+        .message.user {
+            align-self: flex-end;
+            flex-direction: row-reverse;
+        }
+
+        .message.bot {
+            align-self: flex-start;
+        }
+
+        .message-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .message.user .message-avatar {
+            background: rgba(52, 152, 219, 0.3);
+        }
+
+        .message.bot .message-avatar {
+            background: rgba(52, 152, 219, 0.2);
+        }
+
+        .message-content {
+            padding: 12px 16px;
+            border-radius: 12px;
+            max-width: 100%;
+        }
+
+        .message.user .message-content {
+            background: #3498db;
+            border-radius: 12px 12px 4px 12px;
+        }
+
+        .message.bot .message-content {
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 12px 12px 12px 4px;
+        }
+
+        .message-text {
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.9);
+        }
+
+        .message.user .message-text {
+            color: #ffffff;
+        }
+
+        .message-time {
+            font-size: 11px;
+            color: rgba(255, 255, 255, 0.4);
+            margin-top: 4px;
+        }
+
+        .chat-input-container {
+            display: flex;
+            gap: 12px;
+        }
+
+        .chat-input-container .form-input {
+            flex: 1;
+            margin: 0;
+        }
+
+        .chat-input-container .btn-primary {
+            width: auto;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        @media (max-width: 768px) {
+            .sidebar {
+                width: 70px;
+            }
+
+            .main-content {
+                margin-left: 70px;
+                width: calc(100% - 70px);
+                padding: 20px;
+            }
+
+            .sidebar-header {
+                padding: 20px 10px;
+            }
+
+            .sidebar-logo span {
+                display: none;
+            }
+
+            .menu-item {
+                padding: 14px 10px;
+                justify-content: center;
+            }
+
+            .menu-item span {
+                display: none;
+            }
+
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .message {
+                max-width: 90%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Dashboard Container -->
+    <div class="dashboard-container" id="dashboardPage">
+        <div class="dashboard-layout">
+            <!-- Sidebar -->
+            <aside class="sidebar">
+                <div class="sidebar-header">
+                    <div class="sidebar-logo">
+                        <div class="sidebar-logo-icon">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="white">
+                                <path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/>
+                            </svg>
+                        </div>
+                        <span>AI Agent</span>
+                    </div>
+                </div>
+                
+                <nav class="sidebar-menu">
+                    <div class="menu-item active" data-section="dashboard">
+                        <svg class="menu-icon" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/>
+                        </svg>
+                        <span>Dashboard</span>
+                    </div>
+                    
+                    <div class="menu-item" data-section="generate">
+                        <svg class="menu-icon" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/>
+                        </svg>
+                        <span>Générer</span>
+                    </div>
+                    
+                    <div class="menu-item" data-section="publish">
+                        <svg class="menu-icon" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/>
+                        </svg>
+                        <span>Publier</span>
+                    </div>
+                    
+                    <div class="menu-item" data-section="chat">
+                        <svg class="menu-icon" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/>
+                        </svg>
+                        <span>Chat</span>
+                    </div>
+                    
+                    <div class="menu-item" data-section="logs">
+                        <svg class="menu-icon" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/>
+                        </svg>
+                        <span>Journaux</span>
+                    </div>
+                    
+                    <div class="menu-item" data-section="settings">
+                        <svg class="menu-icon" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
+                        </svg>
+                        <span>Paramètres</span>
+                    </div>
+                </nav>
+                
+                <div class="sidebar-footer">
+                    <button class="btn-logout" id="logoutBtn">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/>
+                        </svg>
+                        Déconnexion
+                    </button>
+                </div>
+            </aside>
+
+            <!-- Main Content -->
+            <main class="main-content">
+                <!-- Dashboard Section -->
+                <section class="content-section active" id="section-dashboard">
+                    <div class="page-header">
+                        <h1 class="page-title">Dashboard AI Agent</h1>
+                        <p class="page-subtitle">Vue d'ensemble du système de marketing automatisé</p>
+                    </div>
+                    
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-header">
+                                <div>
+                                    <div class="stat-label">Statut du système</div>
+                                    <div class="stat-value">
+                                        <span class="status-indicator">
+                                            <span class="status-dot status-online"></span>
+                                            En ligne
+                                        </span>
+                                    </div>
+                                </div>
+                                <div class="stat-icon">
+                                    <svg width="24" height="24" viewBox="0 0 24 24" fill="#3498db">
+                                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                                    </svg>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="stat-card">
+                            <div class="stat-header">
+                                <div>
+                                    <div class="stat-label">Mode automatique</div>
+                                    <div class="stat-value">
+                                        <span class="status-indicator">
+                                            <span class="status-dot status-active"></span>
+                                            Activé
+                                        </span>
+                                    </div>
+                                </div>
+                                <div class="stat-icon">
+                                    <svg width="24" height="24" viewBox="0 0 24 24" fill="#3498db">
+                                        <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/>
+                                    </svg>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="stat-card">
+                            <div class="stat-header">
+                                <div>
+                                    <div class="stat-label">API disponible</div>
+                                    <div class="stat-value">
+                                        <span class="status-indicator">
+                                            <span class="status-dot status-online"></span>
+                                            /generate
+                                        </span>
+                                    </div>
+                                </div>
+                                <div class="stat-icon">
+                                    <svg width="24" height="24" viewBox="0 0 24 24" fill="#3498db">
+                                        <path d="M4.01 6.03l7.51 3.22-7.52-1 .01-2.22m7.5 8.72L4 17.97v-2.22l7.51-1M2.01 3L2 10l15 2-15 2 .01 7L23 12 2.01 3z"/>
+                                    </svg>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="card">
+                        <h2 class="card-title">🚀 Actions rapides</h2>
+                        <div style="display: flex; gap: 15px; flex-wrap: wrap;">
+                            <button id="generateNowBtn" class="btn-primary">
+                                Générer du contenu maintenant
+                            </button>
+                            <button id="publishNowBtn" class="btn-secondary">
+                                Publier manuellement
+                            </button>
+                            <button id="checkStatusBtn" class="btn-secondary">
+                                Vérifier le statut
+                            </button>
+                        </div>
+                        
+                        <div class="result-box" id="actionResult">
+                            <div class="result-label">Résultat :</div>
+                            <div class="result-value" id="resultContent">En attente d'action...</div>
+                        </div>
+                    </div>
+                    
+                    <div class="card">
+                        <h2 class="card-title">📊 Informations système</h2>
+                        <div class="table-container">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Composant</th>
+                                        <th>Statut</th>
+                                        <th>Détails</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>Serveur FastAPI</td>
+                                        <td><span class="status-indicator"><span class="status-dot status-online"></span> En ligne</span></td>
+                                        <td>Port 8000</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Thread d'automatisation</td>
+                                        <td><span class="status-indicator"><span class="status-dot status-active"></span> Actif</span></td>
+                                        <td>Exécution en arrière-plan</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Module IA</td>
+                                        <td><span class="status-indicator"><span class="status-dot status-online"></span> Prêt</span></td>
+                                        <td>générer_contenu() disponible</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Module Publication</td>
+                                        <td><span class="status-indicator"><span class="status-dot status-online"></span> Prêt</span></td>
+                                        <td>publier_tous() disponible</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Generate Section -->
+                <section class="content-section" id="section-generate">
+                    <div class="page-header">
+                        <h1 class="page-title">Génération de contenu</h1>
+                        <p class="page-subtitle">Générer manuellement du contenu marketing</p>
+                    </div>
+                    
+                    <div class="card">
+                        <h2 class="card-title">🤖 Générer avec l'IA</h2>
+                        <p style="margin-bottom: 20px; color: rgba(255,255,255,0.7);">
+                            Cliquez sur le bouton pour générer du contenu marketing automatiquement.
+                            Le contenu sera enregistré dans Excel et prêt pour publication.
+                        </p>
+                        
+                        <button id="generateContentBtn" class="btn-primary" style="padding: 16px 32px; font-size: 18px;">
+                            Générer du contenu IA
+                        </button>
+                        
+                        <div class="result-box" id="generateResult">
+                            <div class="result-label">Contenu généré :</div>
+                            <div class="result-value" id="generatedContent">
+                                En attente de génération...
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="card">
+                        <h2 class="card-title">⚙️ Paramètres de génération</h2>
+                        <div class="form-row">
+                            <label class="form-label">Thème principal</label>
+                            <select class="form-input" id="themeSelect">
+                                <option value="">Automatique (IA choisit)</option>
+                                <option value="marketing">Marketing Digital</option>
+                                <option value="tech">Technologie</option>
+                                <option value="business">Business</option>
+                                <option value="education">Éducation</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-row">
+                            <label class="form-label">Style de contenu</label>
+                            <select class="form-input" id="styleSelect">
+                                <option value="">Automatique</option>
+                                <option value="professionnel">Professionnel</option>
+                                <option value="conversationnel">Conversationnel</option>
+                                <option value="inspirant">Inspirant</option>
+                                <option value="technique">Technique</option>
+                            </select>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Publish Section -->
+                <section class="content-section" id="section-publish">
+                    <div class="page-header">
+                        <h1 class="page-title">Publication</h1>
+                        <p class="page-subtitle">Gérer la publication des contenus</p>
+                    </div>
+                    
+                    <div class="card">
+                        <h2 class="card-title">📤 Publier maintenant</h2>
+                        <p style="margin-bottom: 20px; color: rgba(255,255,255,0.7);">
+                            Publiez tous les contenus en attente. Le système automatique publie déjà
+                            périodiquement, mais vous pouvez déclencher manuellement.
+                        </p>
+                        
+                        <button id="publishContentBtn" class="btn-primary" style="padding: 16px 32px; font-size: 18px;">
+                            Publier les contenus en attente
+                        </button>
+                        
+                        <div class="result-box" id="publishResult">
+                            <div class="result-label">Résultat de publication :</div>
+                            <div class="result-value" id="publishStatus">
+                                En attente...
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="card">
+                        <h2 class="card-title">📋 Contenus prêts à publier</h2>
+                        <div class="table-container">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Titre</th>
+                                        <th>Date de création</th>
+                                        <th>Statut</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="contentTable">
+                                    <tr>
+                                        <td colspan="5" style="text-align: center; padding: 40px; color: rgba(255,255,255,0.5);">
+                                            Chargement des contenus...
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Chat Section -->
+                <section class="content-section" id="section-chat">
+                    <div class="page-header">
+                        <h1 class="page-title">Chat Support</h1>
+                        <p class="page-subtitle">Assistance en temps réel pour votre système</p>
+                    </div>
+                    
+                    <div class="card">
+                        <h2 class="card-title">💬 Chat avec l'assistant IA</h2>
+                        
+                        <div class="chat-messages" id="chatMessages">
+                            <!-- Messages will be added here dynamically -->
+                            <div class="message bot">
+                                <div class="message-avatar">
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="#3498db">
+                                        <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+                                    </svg>
+                                </div>
+                                <div class="message-content">
+                                    <div class="message-text">
+                                        Bonjour ! Je suis l'assistant IA de votre système de marketing. Comment puis-je vous aider aujourd'hui ?
+                                    </div>
+                                    <div class="message-time" id="botTime">Maintenant</div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <form id="chatForm" class="chat-input-container">
+                            <input type="text" id="chatInput" class="form-input" placeholder="Tapez votre message ici..." required>
+                            <button type="submit" class="btn-primary">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+                                </svg>
+                                Envoyer
+                            </button>
+                        </form>
+                    </div>
+                    
+                    <div class="card">
+                        <h2 class="card-title">🤔 Questions fréquentes</h2>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px;">
+                            <div style="background: rgba(255,255,255,0.03); padding: 15px; border-radius: 10px; cursor: pointer;" onclick="sendFAQ('Comment générer du contenu ?')">
+                                <div style="font-weight: 600; margin-bottom: 5px;">Comment générer du contenu ?</div>
+                                <div style="font-size: 13px; color: rgba(255,255,255,0.6);">Apprenez à utiliser la génération IA</div>
+                            </div>
+                            <div style="background: rgba(255,255,255,0.03); padding: 15px; border-radius: 10px; cursor: pointer;" onclick="sendFAQ('Comment publier manuellement ?')">
+                                <div style="font-weight: 600; margin-bottom: 5px;">Comment publier manuellement ?</div>
+                                <div style="font-size: 13px; color: rgba(255,255,255,0.6);">Guide de publication manuelle</div>
+                            </div>
+                            <div style="background: rgba(255,255,255,0.03); padding: 15px; border-radius: 10px; cursor: pointer;" onclick="sendFAQ('Statut du système ?')">
+                                <div style="font-weight: 600; margin-bottom: 5px;">Statut du système ?</div>
+                                <div style="font-size: 13px; color: rgba(255,255,255,0.6);">Vérifiez l'état de votre système</div>
+                            </div>
+                            <div style="background: rgba(255,255,255,0.03); padding: 15px; border-radius: 10px; cursor: pointer;" onclick="sendFAQ('Problèmes techniques ?')">
+                                <div style="font-weight: 600; margin-bottom: 5px;">Problèmes techniques ?</div>
+                                <div style="font-size: 13px; color: rgba(255,255,255,0.6);">Résolution des problèmes courants</div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Logs Section -->
+                <section class="content-section" id="section-logs">
+                    <div class="page-header">
+                        <h1 class="page-title">Journaux système</h1>
+                        <p class="page-subtitle">Historique des activités et erreurs</p>
+                    </div>
+                    
+                    <div class="card">
+                        <h2 class="card-title">📝 Activités récentes</h2>
+                        <div class="log-list" id="systemLogs">
+                            <div class="log-item">
+                                ✓ [12:45] Dashboard chargé avec succès
+                            </div>
+                            <div class="log-item">
+                                ✓ [12:44] Connexion utilisateur admin
+                            </div>
+                            <div class="log-item">
+                                ⚡ [12:30] Génération automatique exécutée
+                            </div>
+                            <div class="log-item">
+                                ✓ [12:15] Publication automatique effectuée
+                            </div>
+                            <div class="log-item">
+                                ✓ [11:45] Sauvegarde des données
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="card">
+                        <h2 class="card-title">🔄 Journal en temps réel</h2>
+                        <div style="display: flex; gap: 15px; margin-bottom: 20px;">
+                            <button id="refreshLogsBtn" class="btn-secondary">
+                                Actualiser les journaux
+                            </button>
+                            <button id="clearLogsBtn" class="btn-secondary">
+                                Effacer les journaux
+                            </button>
+                        </div>
+                        
+                        <div class="log-list" style="max-height: 400px;" id="realtimeLogs">
+                            <!-- Les journaux seront ajoutés ici dynamiquement -->
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Settings Section -->
+                <section class="content-section" id="section-settings">
+                    <div class="page-header">
+                        <h1 class="page-title">Paramètres</h1>
+                        <p class="page-subtitle">Configuration du système</p>
+                    </div>
+                    
+                    <div class="card">
+                        <div class="settings-section">
+                            <h3 class="settings-title">⚙️ Automatisation</h3>
+                            <div class="setting-item">
+                                <span class="setting-label">Mode automatique</span>
+                                <div class="toggle-switch active" id="autoModeToggle">
+                                    <div class="toggle-slider"></div>
+                                </div>
+                            </div>
+                            <div class="setting-item">
+                                <span class="setting-label">Notifications</span>
+                                <div class="toggle-switch active" id="notifToggle">
+                                    <div class="toggle-slider"></div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="settings-section">
+                            <h3 class="settings-title">🔧 Configuration API</h3>
+                            <div class="form-row">
+                                <label class="form-label">URL du serveur</label>
+                                <input type="text" class="form-input" id="serverUrl" value="http://localhost:8000" readonly>
+                            </div>
+                            <div class="form-row">
+                                <label class="form-label">Endpoint de génération</label>
+                                <input type="text" class="form-input" id="generateEndpoint" value="/generate" readonly>
+                            </div>
+                        </div>
+                        
+                        <div class="settings-section">
+                            <h3 class="settings-title">ℹ️ Informations</h3>
+                            <div class="setting-item">
+                                <span class="setting-label">Version</span>
+                                <span style="color: rgba(255, 255, 255, 0.6); font-size: 14px;">v1.0.0</span>
+                            </div>
+                            <div class="setting-item">
+                                <span class="setting-label">Dernière mise à jour</span>
+                                <span style="color: rgba(255, 255, 255, 0.6); font-size: 14px;">Aujourd'hui</span>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </main>
+        </div>
+    </div>
+    <script src="/interface/app.js"></script>
+</body>
+</html>

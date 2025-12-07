@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agent IA Marketing - Connexion</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica', 'Arial', sans-serif;
+            background: linear-gradient(135deg, #0A1A2F 0%, #162a45 100%);
+            color: #ffffff;
+            height: 100vh;
+            width: 100%;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .login-container {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .login-box {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            padding: 50px 40px;
+            width: 100%;
+            max-width: 420px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            animation: fadeIn 0.5s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .logo {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .logo-icon {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 20px;
+        }
+
+        .logo-text {
+            font-size: 28px;
+            font-weight: 700;
+            color: #ffffff;
+            margin-bottom: 8px;
+        }
+
+        .logo-subtitle {
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.7);
+        }
+
+        .form-group {
+            margin-bottom: 25px;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            color: rgba(255, 255, 255, 0.9);
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 14px 16px;
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 12px;
+            color: #ffffff;
+            font-size: 15px;
+            transition: all 0.3s ease;
+        }
+
+        .form-input:focus {
+            outline: none;
+            background: rgba(255, 255, 255, 0.12);
+            border-color: #3498db;
+            box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+        }
+
+        .form-input::placeholder {
+            color: rgba(255, 255, 255, 0.4);
+        }
+
+        .btn-primary {
+            width: 100%;
+            padding: 14px;
+            background: #3498db;
+            color: #ffffff;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 10px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn-primary:hover {
+            background: #2980b9;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(52, 152, 219, 0.4);
+        }
+
+        .btn-primary:active {
+            transform: translateY(0);
+        }
+
+        .btn-primary.loading::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 20px;
+            height: 20px;
+            margin: -10px 0 0 -10px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-top: 2px solid #ffffff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .error-message {
+            background: rgba(231, 76, 60, 0.15);
+            border: 1px solid rgba(231, 76, 60, 0.3);
+            border-radius: 10px;
+            padding: 12px;
+            margin-top: 15px;
+            font-size: 14px;
+            color: #e74c3c;
+            display: none;
+            animation: slideDown 0.3s ease-out;
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .status-message {
+            text-align: center;
+            margin-top: 20px;
+            font-size: 13px;
+            color: rgba(255, 255, 255, 0.6);
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            display: none;
+        }
+
+        .loading-dots::after {
+            content: '';
+            animation: dots 1.5s steps(4, end) infinite;
+        }
+
+        @keyframes dots {
+            0%, 20% { content: ''; }
+            40% { content: '.'; }
+            60% { content: '..'; }
+            80%, 100% { content: '...'; }
+        }
+
+        @media (max-width: 480px) {
+            .login-box {
+                padding: 40px 25px;
+                margin: 20px;
+            }
+            
+            .logo-text {
+                font-size: 24px;
+            }
+            
+            .logo-icon {
+                width: 60px;
+                height: 60px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container" id="loginPage">
+        <div class="login-box">
+            <div class="logo">
+                <svg class="logo-icon" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <rect x="10" y="10" width="80" height="80" rx="16" fill="#3498db" opacity="0.2" />
+                    <rect x="20" y="20" width="60" height="60" rx="12" fill="#3498db" />
+                    <path d="M40 45 L50 55 L65 40" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+                <div class="logo-text">Agent IA Marketing</div>
+                <div class="logo-subtitle">Interface d'administration</div>
+            </div>
+            
+            <form id="loginForm">
+                <div class="form-group">
+                    <label for="username" class="form-label">Identifiant</label>
+                    <input type="text" id="username" class="form-input" placeholder="admin" required autofocus>
+                </div>
+                
+                <div class="form-group">
+                    <label for="password" class="form-label">Mot de passe</label>
+                    <input type="password" id="password" class="form-input" placeholder="••••••••" required>
+                </div>
+                
+                <button type="submit" class="btn-primary" id="loginButton">
+                    <span id="buttonText">Se connecter</span>
+                </button>
+                
+                <div class="error-message" id="errorMessage">
+                    Identifiants incorrects. Veuillez réessayer.
+                </div>
+            </form>
+            
+            <div class="status-message" id="statusMessage">
+                Connexion en cours<span class="loading-dots"></span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const loginForm = document.getElementById('loginForm');
+            const loginButton = document.getElementById('loginButton');
+            const buttonText = document.getElementById('buttonText');
+            const errorMessage = document.getElementById('errorMessage');
+            const statusMessage = document.getElementById('statusMessage');
+            
+            let isProcessing = false;
+            
+            async function authenticate(username, password) {
+                try {
+                    const response = await fetch('/api/login', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ username, password })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (response.ok) {
+                        // Stocker le token (en local storage pour cet exemple)
+                        localStorage.setItem('auth_token', data.token);
+                        localStorage.setItem('user', JSON.stringify(data.user));
+                        return { success: true, data };
+                    } else {
+                        return { success: false, error: data.message };
+                    }
+                } catch (error) {
+                    return { success: false, error: 'Erreur de connexion au serveur' };
+                }
+            }
+            
+            function showLoading() {
+                isProcessing = true;
+                loginButton.classList.add('loading');
+                buttonText.style.opacity = '0';
+                errorMessage.style.display = 'none';
+                statusMessage.style.display = 'block';
+                loginButton.disabled = true;
+            }
+            
+            function hideLoading() {
+                isProcessing = false;
+                loginButton.classList.remove('loading');
+                buttonText.style.opacity = '1';
+                statusMessage.style.display = 'none';
+                loginButton.disabled = false;
+            }
+            
+            function showError(message = 'Identifiants incorrects') {
+                errorMessage.textContent = message;
+                errorMessage.style.display = 'block';
+                
+                loginForm.style.animation = 'none';
+                setTimeout(() => {
+                    loginForm.style.animation = 'shake 0.5s ease-in-out';
+                }, 10);
+            }
+            
+            // Animation de secousse
+            const style = document.createElement('style');
+            style.textContent = `
+                @keyframes shake {
+                    0%, 100% { transform: translateX(0); }
+                    10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
+                    20%, 40%, 60%, 80% { transform: translateX(5px); }
+                }
+            `;
+            document.head.appendChild(style);
+            
+            // Gestion de la connexion
+            loginForm.addEventListener('submit', async function(e) {
+                e.preventDefault();
+                
+                if (isProcessing) return;
+                
+                const username = document.getElementById('username').value.trim();
+                const password = document.getElementById('password').value;
+                
+                if (!username || !password) {
+                    showError('Veuillez remplir tous les champs');
+                    return;
+                }
+                
+                showLoading();
+                
+                try {
+                    const result = await authenticate(username, password);
+                    
+                    if (result.success) {
+                        // Connexion réussie
+                        setTimeout(() => {
+                            hideLoading();
+                            buttonText.textContent = 'Connexion réussie ✓';
+                            loginButton.style.background = '#2ecc71';
+                            
+                            setTimeout(() => {
+                                // Redirection vers le dashboard
+                                window.location.href = '/dashboard';
+                            }, 1000);
+                            
+                        }, 500);
+                    } else {
+                        setTimeout(() => {
+                            hideLoading();
+                            showError(result.error || 'Identifiants incorrects');
+                        }, 500);
+                    }
+                } catch (error) {
+                    hideLoading();
+                    showError('Erreur de connexion. Veuillez réessayer.');
+                    console.error('Login error:', error);
+                }
+            });
+            
+            // Auto-focus sur le champ username
+            document.getElementById('username').focus();
+            
+            // Permettre la connexion avec Entrée
+            document.getElementById('password').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter' && !isProcessing) {
+                    loginForm.dispatchEvent(new Event('submit'));
+                }
+            });
+            
+            // Pré-remplir avec admin/admin pour le test
+            document.getElementById('username').value = 'admin';
+            document.getElementById('password').value = 'admin';
+        });
+    </script>
+</body>
+</html>
