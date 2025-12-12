@@ -32,16 +32,60 @@ except Exception as e:
     print(f"⚠️ Erreur chargement Google Sheets: {e}")
 
 # -----------------------------------------------------------------
-# CONFIGURATION DES APIS
+# CONFIGURATION GOOGLE DRIVE
 # -----------------------------------------------------------------
 try:
-    from config import OPENAI_API_KEY, OPENAI_MODEL, UNSPLASH_API_KEY
+    from modules.google_drive import drive_manager, initialize_drive_manager
+    GOOGLE_DRIVE_AVAILABLE = True
+    print("✅ Module Google Drive disponible")
+except ImportError as e:
+    GOOGLE_DRIVE_AVAILABLE = False
+    print(f"⚠️ Google Drive non disponible: {e}")
+except Exception as e:
+    GOOGLE_DRIVE_AVAILABLE = False
+    print(f"⚠️ Erreur chargement Google Drive: {e}")
+
+# -----------------------------------------------------------------
+# CONFIGURATION DES APIS (utilise votre config.py existant)
+# -----------------------------------------------------------------
+try:
+    from config import (
+        OPENAI_API_KEY, 
+        OPENAI_MODEL, 
+        UNSPLASH_API_KEY,
+        GOOGLE_DRIVE_CREDENTIALS,  # De votre config.py
+        GOOGLE_DRIVE_FOLDER_ID     # De votre config.py
+    )
+    
+    # Initialiser Google Drive manager si disponible
+    if GOOGLE_DRIVE_AVAILABLE and GOOGLE_DRIVE_CREDENTIALS and os.path.exists(GOOGLE_DRIVE_CREDENTIALS):
+        try:
+            initialize_drive_manager(GOOGLE_DRIVE_CREDENTIALS, GOOGLE_DRIVE_FOLDER_ID)
+            if drive_manager and drive_manager.service:
+                print("✅ Gestionnaire Google Drive initialisé")
+            else:
+                print("⚠️ Google Drive non initialisé correctement")
+                GOOGLE_DRIVE_AVAILABLE = False
+        except Exception as e:
+            print(f"⚠️ Erreur initialisation Google Drive: {e}")
+            GOOGLE_DRIVE_AVAILABLE = False
+    else:
+        if GOOGLE_DRIVE_AVAILABLE:
+            print("⚠️ Credentials Google Drive non trouvés, désactivation")
+            GOOGLE_DRIVE_AVAILABLE = False
+            
 except ImportError:
     # Fallback pour les variables d'environnement directes
     import os
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
     OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
     UNSPLASH_API_KEY = os.getenv("UNSPLASH_API_KEY", "")
+    GOOGLE_DRIVE_CREDENTIALS = os.getenv("GOOGLE_DRIVE_CREDENTIALS_JSON", "")
+    GOOGLE_DRIVE_FOLDER_ID = os.getenv("GOOGLE_DRIVE_FOLDER_ID", "")
+    
+    # Initialiser Google Drive manager
+    if GOOGLE_DRIVE_AVAILABLE and GOOGLE_DRIVE_CREDENTIALS:
+        initialize_drive_manager(GOOGLE_DRIVE_CREDENTIALS, GOOGLE_DRIVE_FOLDER_ID)
 
 EXCEL_FILE = "historique_posts.xlsx"
 IMAGE_FOLDER = "images_posts"
@@ -61,7 +105,7 @@ AGENTS_BEN_TECH = [
     },
     {
         "nom": "NGOLA",
-        "prenom": "Dav",
+        "prenom": "David",
         "poste": "Directeur Technique",
         "departement": "Développement & Innovation",
         "specialite": "Architecture logicielle & Solutions IA",
@@ -165,7 +209,10 @@ def lire_historique() -> pd.DataFrame:
             "reaction_positive", "reaction_negative",
             "taux_conversion_estime", "publication_effective",
             "nom_plateforme", "suggestion", "date",
-            "score_performance_final", "image_path", "image_auteur", "type_publication"
+            "score_performance_final", "image_path", "image_auteur", "type_publication",
+            "agent_responsable",
+            "image_drive_id", "image_drive_filename", "image_drive_url",
+            "image_public_link", "image_direct_link"
         ]
         
         for col in colonnes_requises:
@@ -212,7 +259,10 @@ def mettre_a_jour_historique(nouveau_post: dict):
                 "reaction_positive", "reaction_negative",
                 "taux_conversion_estime", "publication_effective",
                 "nom_plateforme", "suggestion", "date",
-                "score_performance_final", "image_path", "image_auteur", "type_publication"
+                "score_performance_final", "image_path", "image_auteur", "type_publication",
+                "agent_responsable",
+                "image_drive_id", "image_drive_filename", "image_drive_url",
+                "image_public_link", "image_direct_link"
             ])
         
         nouveau_df = pd.DataFrame([nouveau_post])
@@ -397,32 +447,77 @@ def choisir_type_publication(df: pd.DataFrame) -> str:
     return "service" if random.random() < 0.6 else "contenu"
 
 # ---------------------------
-# 5. Génération image via Unsplash
+# 5. Génération image via Unsplash avec sauvegarde UNIQUEMENT Google Drive
 # ---------------------------
-def trouver_image_unsplash(theme: str, commentaires: Optional[list[str]] = None) -> Tuple[Optional[str], Optional[str]]:
+def trouver_image_unsplash(theme: str, commentaires: Optional[list[str]] = None) -> Tuple[Optional[str], Optional[dict]]:
+    """
+    Recherche une image sur Unsplash et la sauvegarde UNIQUEMENT dans Google Drive
+    
+    Returns:
+        Tuple: (auteur, infos_google_drive)
+    """
     if not UNSPLASH_API_KEY:
         print("❌ Aucun UNSPLASH_API_KEY défini.")
         return None, None
 
-    def _save_image_from_url(url: str, theme_safe: str) -> Optional[str]:
+    def _upload_to_google_drive(url: str, theme_safe: str) -> Optional[dict]:
+        """
+        Télécharge une image depuis une URL et l'upload UNIQUEMENT vers Google Drive
+        
+        Returns:
+            dict: Informations Google Drive ou None
+        """
         try:
+            # Télécharger l'image depuis l'URL
             img_resp = requests.get(url, timeout=20)
             img_resp.raise_for_status()
+            
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            url_clean = url.split('?')[0]
-            ext = os.path.splitext(url_clean)[1]
-            if not ext or len(ext) > 5:
-                ext = ".jpg"
-            
             safe_theme = "".join(c if c.isalnum() else "_" for c in theme)[:30]
-            filename = f"{safe_theme}_{timestamp}{ext}"
-            filepath = os.path.join(IMAGE_FOLDER, filename)
+            filename = f"ben_tech_{safe_theme}_{timestamp}.jpg"
             
-            with open(filepath, "wb") as f:
-                f.write(img_resp.content)
-            return filepath
+            # Vérifier si Google Drive est disponible
+            if not GOOGLE_DRIVE_AVAILABLE or not drive_manager or not drive_manager.service:
+                print("❌ Google Drive non disponible pour l'upload")
+                return None
+            
+            # Préparer la description
+            description = f"""
+Image pour Ben Tech Pro
+Thème: {theme}
+Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+Source: Unsplash
+Usage: Marketing digital et réseaux sociaux
+Entreprise: Ben Tech - Agence de Transformation Digitale
+"""
+            
+            # Upload DIRECT vers Google Drive
+            print(f"⬆️ Upload vers Google Drive: {filename}")
+            drive_info = drive_manager.upload_image_from_url(
+                image_url=url,
+                filename=filename,
+                description=description.strip()
+            )
+            
+            if drive_info:
+                print(f"✅ Image uploadée avec succès vers Google Drive")
+                
+                # Rendre le fichier public pour pouvoir l'afficher
+                public_link = drive_manager.create_public_link(drive_info['id'])
+                if public_link:
+                    drive_info['public_link'] = public_link
+                    print(f"🔗 Lien public créé: {public_link}")
+                
+                # Ajouter le lien d'affichage direct (pour embed dans les sites)
+                drive_info['direct_image_link'] = f"https://drive.google.com/uc?id={drive_info['id']}"
+                
+                return drive_info
+            else:
+                print("❌ Échec de l'upload vers Google Drive")
+                return None
+                
         except Exception as e:
-            print(f"❌ Erreur téléchargement image : {e}")
+            print(f"❌ Erreur lors de l'upload Google Drive : {e}")
             return None
 
     # Reformulation du thème avec contexte Ben Tech
@@ -450,6 +545,7 @@ Format : "mot1 mot2 mot3"
         theme_reformule = theme
 
     try:
+        # Recherche d'image sur Unsplash avec les mots-clés reformulés
         query = quote(theme_reformule)
         url_api = f"https://api.unsplash.com/search/photos?query={query}&per_page=5"
         headers = {"Authorization": f"Client-ID {UNSPLASH_API_KEY}"}
@@ -458,6 +554,7 @@ Format : "mot1 mot2 mot3"
         data = resp.json()
         results = data.get("results", [])
         
+        # Fallback au thème original si pas de résultats
         if not results:
             print("⚠️ Aucun résultat sur Unsplash pour :", theme_reformule)
             query = quote(theme)
@@ -471,27 +568,43 @@ Format : "mot1 mot2 mot3"
                 print("⚠️ Aucun résultat même avec le thème original")
                 return None, None
 
+        # Sélection aléatoire d'une photo
         photo = random.choice(results)
         image_url = photo.get("urls", {}).get("regular") or photo.get("urls", {}).get("small")
         auteur = photo.get("user", {}).get("name", "Unsplash")
+        
+        # Informations supplémentaires sur la photo
+        photo_description = photo.get("description", theme)
+        photo_alt = photo.get("alt_description", f"Image pour {theme}")
 
         if not image_url:
             print("❌ Pas d'URL image valide dans Unsplash.")
             return None, None
 
+        # Upload DIRECT vers Google Drive (pas de sauvegarde locale)
         safe_theme = "".join(c if c.isalnum() else "_" for c in theme)[:30]
-        filepath = _save_image_from_url(image_url, safe_theme)
+        drive_info = _upload_to_google_drive(image_url, safe_theme)
+        
+        if drive_info:
+            # Ajouter les infos Unsplash aux infos Drive
+            drive_info['unsplash_author'] = auteur
+            drive_info['unsplash_description'] = photo_description
+            drive_info['unsplash_alt'] = photo_alt
+            
+            print(f"\n✅ Image traitée avec succès")
+            print(f"   👤 Auteur Unsplash: {auteur}")
+            print(f"   📁 Google Drive: {drive_info.get('name', 'N/A')}")
+            print(f"   🔗 Lien public: {drive_info.get('public_link', 'N/A')}")
+            print(f"   🖼️ Lien direct: {drive_info.get('direct_image_link', 'N/A')}")
+            
+            return auteur, drive_info
+        else:
+            print("❌ Échec de l'upload vers Google Drive")
+            return None, None
         
     except Exception as e:
         print(f"❌ Erreur API Unsplash : {e}")
         return None, None
-
-    if filepath:
-        print(f"✅ Image téléchargée : {os.path.basename(filepath)}")
-        return filepath, auteur
-
-    print("❌ Impossible de récupérer une image pertinente pour :", theme)
-    return None, None
 
 # ---------------------------
 # 6. Génération du prompt personnalisé PROFESSIONNEL
@@ -817,7 +930,7 @@ CEO & Fondateur | Direction Générale
 Ensemble, créons l'avenir digital de votre entreprise. 💼"""
 
 # ---------------------------
-# 9. Génération complète du contenu PROFESSIONNEL
+# 9. Génération complète du contenu PROFESSIONNEL (version Google Drive uniquement)
 # ---------------------------
 def generer_contenu() -> Dict[str, Any]:
     """Génère un contenu professionnel complet pour Ben Tech"""
@@ -842,9 +955,17 @@ def generer_contenu() -> Dict[str, Any]:
         type_publication = choisir_type_publication(df)
         
         print(f"🎯 GÉNÉRATION PRO BEN TECH: {service} | Thème: {theme} | Style: {style} | Type: {type_publication}")
+        print(f"{'='*60}")
         
-        # Recherche d'image
-        image_path, image_auteur = trouver_image_unsplash(theme)
+        # Recherche d'image (UNIQUEMENT dans Google Drive)
+        image_auteur, drive_info = trouver_image_unsplash(theme)
+        
+        # Récupérer les infos Google Drive
+        image_drive_url = drive_info.get('webViewLink') if drive_info else ""
+        image_drive_id = drive_info.get('id') if drive_info else ""
+        image_drive_filename = drive_info.get('name') if drive_info else ""
+        image_public_link = drive_info.get('public_link') if drive_info else ""
+        image_direct_link = drive_info.get('direct_image_link') if drive_info else ""
         
         # Génération des prompts pro
         prompt_texte, prompt_script = generer_prompt_personnalise(service, theme, style, analyse, type_publication)
@@ -893,7 +1014,7 @@ def generer_contenu() -> Dict[str, Any]:
         score_conversion = random.randint(40, 90)
         titre = f"{service} : {theme}"
         
-        # Création du post pro
+        # Création du post pro avec infos Google Drive uniquement
         nouveau_post = {
             "titre": titre,
             "theme": theme,
@@ -909,24 +1030,49 @@ def generer_contenu() -> Dict[str, Any]:
             "suggestion": analyse[:500] if analyse else "",
             "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "score_performance_final": "",
-            "image_path": image_path or "",
+            
+            # Image info - Google Drive uniquement
+            "image_path": "",  # Vide car pas de sauvegarde locale
             "image_auteur": image_auteur or "",
+            
+            # Champs Google Drive
+            "image_drive_id": image_drive_id or "",
+            "image_drive_filename": image_drive_filename or "",
+            "image_drive_url": image_drive_url or "",
+            "image_public_link": image_public_link or "",
+            "image_direct_link": image_direct_link or "",  # Lien direct pour affichage
+            
             "type_publication": type_publication,
-            "agent_responsable": get_agent_aleatoire()['prenom']  # Ajout agent
+            "agent_responsable": get_agent_aleatoire()['prenom']
         }
         
-        # Sauvegarde
+        # Sauvegarde dans l'historique
         mettre_a_jour_historique(nouveau_post)
         
+        print(f"\n{'='*60}")
         print(f"🎉 CONTENU PRO GÉNÉRÉ : {titre}")
         print(f"   📊 Conversion estimée : {score_conversion}%")
         print(f"   🎭 Style : {style}")
-        print(f"   📸 Image : {'Oui' if image_path else 'Non'}")
+        print(f"   📸 Stockage : {'✅ Google Drive uniquement' if drive_info else '❌ Aucune image'}")
+        
+        if drive_info:
+            print(f"   👤 Auteur : {image_auteur}")
+            print(f"   📁 Fichier : {image_drive_filename}")
+            print(f"   🔗 Lien Drive : {image_drive_url}")
+            if image_public_link:
+                print(f"   🌐 Lien public : {image_public_link}")
+            if image_direct_link:
+                print(f"   🖼️ Lien direct image : {image_direct_link}")
+        
+        print(f"{'='*60}")
         
         return nouveau_post
         
     except Exception as e:
         print(f"❌ Erreur critique dans generer_contenu: {e}")
+        import traceback
+        traceback.print_exc()
+        
         agent = get_agent_aleatoire()
         return {
             "titre": "Contenu Ben Tech - Expertise Digitale",
@@ -947,7 +1093,7 @@ def generer_contenu() -> Dict[str, Any]:
 {agent['prenom']} {agent['nom']}
 {agent['poste']} | Ben Tech
 {agent['signature']}""",
-            "script_video": "🎬 Ben Tech - L'expertise tech au service de votre business",
+            "script_video": "🎬 Ben Tech - L'excellence tech au service de votre business",
             "reaction_positive": 0,
             "reaction_negative": 0,
             "taux_conversion_estime": 65,
@@ -958,6 +1104,11 @@ def generer_contenu() -> Dict[str, Any]:
             "score_performance_final": "",
             "image_path": "",
             "image_auteur": "",
+            "image_drive_id": "",
+            "image_drive_filename": "",
+            "image_drive_url": "",
+            "image_public_link": "",
+            "image_direct_link": "",
             "type_publication": "contenu",
             "agent_responsable": agent['prenom']
         }
@@ -980,7 +1131,8 @@ def get_statistiques_globales() -> Dict[str, Any]:
             "dernier_post": None,
             "data_source": "Excel local" if not GOOGLE_SHEETS_AVAILABLE else "Google Sheets",
             "gsheets_available": GOOGLE_SHEETS_AVAILABLE,
-            "agents_disponibles": len(AGENTS_BEN_TECH)
+            "agents_disponibles": len(AGENTS_BEN_TECH),
+            "google_drive_available": GOOGLE_DRIVE_AVAILABLE
         }
     
     try:
@@ -1026,7 +1178,8 @@ def get_statistiques_globales() -> Dict[str, Any]:
                     "date": dernier.get("date", ""),
                     "theme": dernier.get("theme", ""),
                     "service": dernier.get("service", ""),
-                    "agent": dernier.get("agent_responsable", "Non attribué")
+                    "agent": dernier.get("agent_responsable", "Non attribué"),
+                    "image_storage": "Google Drive" if dernier.get("image_drive_id") else "Local" if dernier.get("image_path") else "Aucune"
                 }
             except:
                 dernier_post = None
@@ -1042,6 +1195,7 @@ def get_statistiques_globales() -> Dict[str, Any]:
             "dernier_post": dernier_post,
             "data_source": "Excel local" if not GOOGLE_SHEETS_AVAILABLE else "Google Sheets",
             "gsheets_available": GOOGLE_SHEETS_AVAILABLE,
+            "google_drive_available": GOOGLE_DRIVE_AVAILABLE,
             "agents_disponibles": len(AGENTS_BEN_TECH),
             "entreprise": "Ben Tech - Agence de Transformation Digitale",
             "positionnement": "Expertise tech avec impact business"
@@ -1062,31 +1216,81 @@ def get_statistiques_globales() -> Dict[str, Any]:
             "dernier_post": None,
             "data_source": "Erreur",
             "gsheets_available": GOOGLE_SHEETS_AVAILABLE,
+            "google_drive_available": GOOGLE_DRIVE_AVAILABLE,
             "agents_disponibles": len(AGENTS_BEN_TECH)
         }
 
-# Fonctions existantes maintenues (analyser_tendances_avancees, generer_recommandations_proactives)
-# ... (garder les versions existantes de ces fonctions)
-📈 PERFORMANCE GLOBALE BEN TECH :
-• Total contenus : 15
-• Publiés : 10 (66.7%)
-• En attente : 5
+# ---------------------------
+# 11. Fonctions auxiliaires (à compléter selon vos besoins)
+# ---------------------------
+def analyser_tendances_avancees(df: pd.DataFrame) -> str:
+    """Analyse les tendances avancées des posts"""
+    if df.empty:
+        return "Aucune donnée pour analyse"
+    
+    try:
+        # Analyse simple des tendances
+        recent_posts = df.tail(10)
+        if recent_posts.empty:
+            return "Données récentes insuffisantes"
+        
+        tendances = []
+        
+        # Analyse par type de publication
+        if "type_publication" in recent_posts.columns:
+            types = recent_posts["type_publication"].value_counts()
+            for type_pub, count in types.items():
+                tendances.append(f"• {type_pub}: {count} posts")
+        
+        # Analyse par style
+        if "style" in recent_posts.columns:
+            styles = recent_posts["style"].value_counts().head(3)
+            tendances.append(f"Styles dominants: {', '.join(styles.index)}")
+        
+        return "\n".join(tendances) if tendances else "Tendances non identifiables"
+        
+    except Exception as e:
+        return f"Erreur analyse tendances: {e}"
 
-🎯 TOP 3 THÈMES PERFORMANTS :
-1. Transformation digitale des PME...
-   • Réactions positives : 42
-   • Engagement score : 38
-   • Moyenne/post : 8.4
-
-🛠️ PERFORMANCE SERVICES :
-• Création de sites web : 68% conversion (✅ BON)
-  Réactions totales : 56
-
-🚀 RECOMMANDATIONS STRATÉGIQUES :
-🔴 PROCHAINE PUBLICATION
-   Dernier post : Automatisation intelligente... (contenu)
-   → ACTION : Créer un post service complémentaire
-
-🟡 RÉÉQUILIBRER STRATÉGIE CONTENU
-   Ratio actuel : 1.2 contenu/service (Idéal : 2-3)
-   → ACTION : Générer plus de contenu éducatif (70%) vs service (30%)
+def generer_recommandations_proactives() -> List[str]:
+    """Génère des recommandations proactives basées sur l'analyse"""
+    df = lire_historique()
+    
+    if df.empty:
+        return [
+            "🏁 Commencez par générer votre premier contenu",
+            "🎯 Ciblez 'Transformation digitale des PME' comme premier thème",
+            "📊 Suivez les réactions pour ajuster votre stratégie"
+        ]
+    
+    recommandations = []
+    
+    try:
+        # Recommandation basée sur le dernier post
+        if not df.empty:
+            dernier = df.iloc[-1]
+            if "type_publication" in dernier:
+                if dernier["type_publication"] == "contenu":
+                    recommandations.append("🔄 Générer un post de service pour équilibrer")
+                else:
+                    recommandations.append("📚 Créer du contenu éducatif pour établir l'autorité")
+        
+        # Recommandation basée sur les performances
+        if "reaction_positive" in df.columns and not df["reaction_positive"].empty:
+            moyenne = df["reaction_positive"].mean()
+            if moyenne < 10:
+                recommandations.append("🔥 Augmenter l'engagement avec des questions directes")
+        
+        # Recommandations générales
+        recommandations.append("⏰ Maintenir une fréquence de 3-4 posts par semaine")
+        recommandations.append("🎥 Prioriser le format vidéo (30-45 secondes)")
+        recommandations.append("🤝 Inclure des témoignages clients pour crédibilité")
+        
+    except Exception as e:
+        recommandations = [
+            "📝 Analyser régulièrement vos performances",
+            "🎯 Adapter le contenu aux besoins de votre audience",
+            "🚀 Expérimenter avec différents formats et styles"
+        ]
+    
+    return recommandations[:5]  # Retourne max 5 recommandations

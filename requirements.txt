@@ -1,10 +1,11 @@
-# requirements.txt
+# requirements.txt - Ben Tech Agent IA Marketing
 # ============================================
 # CORE - APPLICATION WEB
 # ============================================
 Flask==3.0.0
 python-dotenv==1.0.0
 gunicorn==21.2.0
+Werkzeug==3.0.1
 
 # ============================================
 # IA & APIS
@@ -14,23 +15,45 @@ requests==2.31.0
 facebook-sdk==3.1.0
 
 # ============================================
-# GOOGLE SHEETS & DATA
+# GOOGLE APIS (Sheets + Drive)
 # ============================================
 gspread==5.12.4
 google-auth==2.25.2
 google-auth-oauthlib==1.2.0
 google-auth-httplib2==0.2.0
+# API Client pour Google Sheets, Drive, etc.
+google-api-python-client==2.108.0
+# Utilitaires Google supplémentaires
+google-cloud-storage==2.14.0  # Optionnel pour stockage cloud
+google-resumable-media==2.7.0  # Uploads de gros fichiers
+# Gestion OAuth2
+oauth2client==4.1.3
+
+# ============================================
+# DATA & EXCEL
+# ============================================
 pandas==2.0.3
 numpy==1.24.3
 openpyxl==3.1.2
+xlrd==2.0.1  # Lecture Excel ancien format
+
+# ============================================
+# IMAGES & MEDIA
+# ============================================
+python-magic==0.4.27  # Détection type de fichier
+mimetypes==1.0  # Gestion types MIME
 
 # ============================================
 # SYSTÈME AUTOMATIQUE
 # ============================================
 schedule==1.2.0
-threading==0.0.0
+APScheduler==3.10.4  # Alternative à schedule
+threading6==1.0.0  # Pour threading (Python 3.10+)
 
 # ============================================
-# HEROKU / PYTHONANYWHERE
+# UTILITAIRES
 # ============================================
-psycopg2-binary==2.9.9  # Pour PostgreSQL si besoin
+python-dateutil==2.8.2  # Manipulation dates
+pytz==2023.3  # Timezones
+tzlocal==5.2  # Timezone locale
+

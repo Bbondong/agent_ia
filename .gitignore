@@ -1,8 +1,8 @@
 # .gitignore
 # Fichiers de configuration sensibles
 # .env
-credentials.json
-*.json
+# credentials.json
+# *.json
 
 # Environnements virtuels
 venv/

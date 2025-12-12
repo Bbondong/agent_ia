@@ -23,6 +23,10 @@ UNSPLASH_API_KEY = os.getenv("UNSPLASH_API_KEY")
 # -----------------------------
 # 🛑 Vérification des variables essentielles
 # -----------------------------
+
+# Google Drive Configuration
+GOOGLE_DRIVE_CREDENTIALS = os.getenv("GOOGLE_DREDENTIALS_JSON", "credentials.json")
+GOOGLE_DRIVE_FOLDER_ID = os.getenv("GOOGLE_DRIVE_FOLDER_ID", "")
 erreurs = []
 
 if not OPENAI_API_KEY:
